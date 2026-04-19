@@ -4,6 +4,10 @@ from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PrivateKey, Ed448PublicKey
 import datetime
 import re
 
@@ -15,6 +19,37 @@ from .exceptions import (
     CertificateLoadError,
     CertificateSaveError
 )
+
+def _signing_hash(private_key):
+    """Retourne l'algorithme de hachage adapté au type de clé privée."""
+    if isinstance(private_key, (Ed25519PrivateKey, Ed448PrivateKey)):
+        return None
+    return hashes.SHA256()
+
+def _end_entity_key_usage(public_key):
+    """Retourne les paramètres KeyUsage adaptés au type de clé publique."""
+    if isinstance(public_key, RSAPublicKey):
+        return x509.KeyUsage(
+            digital_signature=True, key_cert_sign=False, crl_sign=False,
+            key_encipherment=True, data_encipherment=True,
+            content_commitment=False, key_agreement=False,
+            encipher_only=False, decipher_only=False
+        )
+    elif isinstance(public_key, EllipticCurvePublicKey):
+        return x509.KeyUsage(
+            digital_signature=True, key_cert_sign=False, crl_sign=False,
+            key_encipherment=False, data_encipherment=False,
+            content_commitment=False, key_agreement=True,
+            encipher_only=False, decipher_only=False
+        )
+    else:
+        # Ed25519 / Ed448 : signature uniquement
+        return x509.KeyUsage(
+            digital_signature=True, key_cert_sign=False, crl_sign=False,
+            key_encipherment=False, data_encipherment=False,
+            content_commitment=False, key_agreement=False,
+            encipher_only=False, decipher_only=False
+        )
 
 def is_valid_email(email):
     """ Vérifie si l'email a un format valide. """
@@ -131,29 +166,21 @@ def createSignedCert(public_key_path:str, pseudo:str, company:str, department:st
 
     # Préparer les extensions
     extensions = [
-        x509.BasicConstraints(ca=False, path_length=None),
-        x509.KeyUsage(
-            digital_signature=True,
-            key_cert_sign=False,
-            crl_sign=False,
-            key_encipherment=True,
-            data_encipherment=True,
-            content_commitment=False,
-            key_agreement=False,
-            encipher_only=False,
-            decipher_only=False
-        ),
-        x509.ExtendedKeyUsage([
+        (x509.BasicConstraints(ca=False, path_length=None), True),
+        (_end_entity_key_usage(public_key), True),
+        (x509.ExtendedKeyUsage([
             x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
             x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH
-        ]),
-        x509.SubjectAlternativeName(
+        ]), False),
+        (x509.SubjectAlternativeName(
             [x509.RFC822Name(email)] +
             [x509.DNSName(name) for name in alt_names or []] +
             [x509.IPAddress(ipaddress.ip_address(ip)) for ip in ip_addresses or []]
-        )
+        ), False),
+        (x509.SubjectKeyIdentifier.from_public_key(public_key), False),
+        (x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_private_key.public_key()), False),
     ]
-    
+
     # Construction du certificat utilisateur
     certificate_builder = x509.CertificateBuilder().subject_name(
         subject
@@ -170,13 +197,13 @@ def createSignedCert(public_key_path:str, pseudo:str, company:str, department:st
     )
 
     # Ajouter les extensions
-    for ext in extensions:
-        certificate_builder = certificate_builder.add_extension(ext, critical=False)
+    for ext, critical in extensions:
+        certificate_builder = certificate_builder.add_extension(ext, critical=critical)
 
     # Signer le certificat avec la clé privée de la CA
     certificate = certificate_builder.sign(
         private_key=ca_private_key,
-        algorithm=hashes.SHA256(),
+        algorithm=_signing_hash(ca_private_key),
         backend=default_backend()
     )
 

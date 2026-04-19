@@ -4,6 +4,8 @@ from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PrivateKey
 import datetime
 import uuid
 import re
@@ -13,6 +15,12 @@ from .exceptions import (
     PrivateKeyLoadError,
     CertificateSaveError
 )
+
+def _signing_hash(private_key):
+    """Retourne l'algorithme de hachage adapté au type de clé privée."""
+    if isinstance(private_key, (Ed25519PrivateKey, Ed448PrivateKey)):
+        return None  # Ed25519/Ed448 gèrent le hachage en interne
+    return hashes.SHA256()
 
 def is_valid_email(email):
     """ Vérifie si l'email a un format valide. """
@@ -123,7 +131,7 @@ def createSelfSignedRootCert(pseudo:str, company:str, city:str, region:str, coun
         critical=False
     ).sign(
         private_key=private_key,
-        algorithm=hashes.SHA256(),
+        algorithm=_signing_hash(private_key),
         backend=default_backend()
     )
 
