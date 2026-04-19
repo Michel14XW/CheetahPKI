@@ -22,6 +22,7 @@ from .exceptions import (
     KeyPairGenerationError,
     KeySaveError,
     DirectoryCreationError,
+    UnsupportedAlgorithmError,
 )
 from .generateKeyPair import generateKeyPair
 from .fingerprint import getCertificateFingerprint
@@ -30,7 +31,7 @@ from .createSignedInterCert import createSignedInterCert
 from .generateCsr import generateCsr
 from .parseCsr import parseCsr
 
-__version__ = "0.0.9"
+__version__ = "0.0.12"
 VERSION = __version__.split(".")
 
 __all__ = (
@@ -54,6 +55,7 @@ __all__ = (
     'KeyPairGenerationError',
     'KeySaveError',
     'DirectoryCreationError',
+    'UnsupportedAlgorithmError',
     'generateKeyPair',
     'get_owner',
     'get_serial_number',
