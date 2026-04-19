@@ -4,6 +4,8 @@ from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PrivateKey
 import datetime
 import re
 
@@ -15,6 +17,12 @@ from .exceptions import (
     CertificateLoadError,
     CertificateSaveError
 )
+
+def _signing_hash(private_key):
+    """Retourne l'algorithme de hachage adapté au type de clé privée."""
+    if isinstance(private_key, (Ed25519PrivateKey, Ed448PrivateKey)):
+        return None
+    return hashes.SHA256()
 
 def is_valid_email(email):
     """ Vérifie si l'email a un format valide. """
@@ -178,7 +186,7 @@ def createSignedInterCert(public_key_path:str, pseudo:str, company:str, departme
     # Signer le certificat avec la clé privée de la CA
     certificate = certificate_builder.sign(
         private_key=ca_private_key,
-        algorithm=hashes.SHA256(),
+        algorithm=_signing_hash(ca_private_key),
         backend=default_backend()
     )
 
