@@ -1,23 +1,23 @@
 # CheetahPKI
 
 
-**Version**: 0.0.11  
+**Version**: 0.0.12  
 **Description**: Package pour la génération de paires de clés et de certificats numériques.  
 
-CheetahPKI est un package Python permettant de générer des paires de clés RSA, de créer des certificats auto-signés, des certificats signés par une autorité de certification (CA), et de récupérer des informations sur les certificats.
+CheetahPKI est un package Python permettant de générer des paires de clés (RSA, ECDSA, Ed25519, Ed448), de créer des certificats auto-signés, des certificats signés par une autorité de certification (CA), et de récupérer des informations sur les certificats.
 
 ## Fonctionnalités
 
-- **Génération de paires de clés RSA** : Crée et enregistre des paires de clés avec un identifiant unique.
+- **Génération de paires de clés** : RSA 2048/4096, ECDSA P-256/P-384/P-521, Ed25519, Ed448.
 - **Création de certificats auto-signés** : Génère des certificats pour des autorités racine.
 - **Création de certificats signés** : Permet de signer un certificat utilisateur via une clé privée CA.
-- **Vérification de validité** : Vérifie la date d'expiration d'un certificat pour confirmer sa validité.
-- **Extraction d'informations sur les certificats** : Obtenez des informations telles que le nom du propriétaire, le numéro de série, et les dates de validité.
-- **Calculer l'empreinte d'une clé publique et d'un certificat** : Obtenez l'empreinte SHA256 de fichiers comme la clé publique et le certificat.
+- **Création de certificats CA intermédiaires** : Signe un certificat CA intermédiaire via une CA root.
+- **Génération et parsing de CSR** : Crée et analyse des Certificate Signing Requests.
+- **Vérification de validité** : Vérifie la date d'expiration d'un certificat.
+- **Extraction d'informations sur les certificats** : Propriétaire, numéro de série, dates de validité.
+- **Empreinte cryptographique** : Calcule l'empreinte SHA256 d'une clé publique ou d'un certificat.
 
 ## Installation
-
-Installez le package via pip (non disponible actuellement sur PyPI) :
 
 ```bash
 pip install git+https://github.com/Michel14XW/cheetahpki.git
@@ -25,386 +25,262 @@ pip install git+https://github.com/Michel14XW/cheetahpki.git
 
 ## Arborescence du projet
 
-```bash
+```
 cheetahpki/
-├── generateKeyPair.py
-├── exceptions.py
-├── fingerprint.py
-├── createSelfSignedRootCert.py
-├── createSignedCert.py
-├── checkCertValidity.py
-└── getCertInfo.py
-    ├── get_owner
-    ├── get_serial_number
-    ├── get_validity_end
-    └── get_validity_start
+├── generateKeyPair.py          # Génération de paires de clés (RSA, EC, Ed25519, Ed448)
+├── createSelfSignedRootCert.py # Certificat auto-signé pour CA root
+├── createSignedCert.py         # Certificat utilisateur signé par CA intermédiaire
+├── createSignedInterCert.py    # Certificat CA intermédiaire signé par CA root
+├── checkCertValidity.py        # Vérification date d'expiration
+├── fingerprint.py              # Empreinte SHA256 clé/certificat
+├── generateCsr.py              # Génération de CSR
+├── parseCsr.py                 # Parsing de CSR
+├── exceptions.py               # Exceptions personnalisées
+└── getCertInfo.py              # Extraction d'infos certificat
 ```
 
-## Utilisation 
+## Algorithmes supportés
 
-**1. Génération d'une paire de clés**
+| Algorithme | Paramètre | Statut |
+|-----------|-----------|--------|
+| RSA | `key_size=2048` ou `4096` | ✅ |
+| ECDSA | `curve="P-256"` (secp256r1) | ✅ |
+| ECDSA | `curve="P-384"` (secp384r1) | ✅ |
+| ECDSA | `curve="P-521"` (secp521r1) | ✅ |
+| Ed25519 | — | ✅ |
+| Ed448 | — | ✅ |
 
-Fichier : generateKeyPair.py
+## Utilisation
 
-Fonction : generateKeyPair
+### 1. Génération d'une paire de clés
 
-```bash
+Fichier : `generateKeyPair.py` — Fonction : `generateKeyPair`
 
-"""
-    Génère une paire de clés RSA et les enregistre dans un sous-dossier avec l'UID du propriétaire.
-    
-    Args:
-        uid (str): Identifiant unique pour le propriétaire des clés.
-        key_size (int): Taille des clés RSA à générer (par défaut 2048 bits).
-        key_directory (str): Nom du sous-dossier où les clés seront enregistrées (par défaut 'keys').
-        private_key_password (str, optional): Mot de passe pour chiffrer la clé privée. Si None, pas de chiffrement.
-    
-    Returns:
-        tuple: Chemins des fichiers pour la clé privée et la clé publique.
-"""
-
+```python
 from cheetahpki.generateKeyPair import generateKeyPair
 
-# Exemple
-private_key_path, public_key_path = generateKeyPair(uid='user123')
+# RSA 4096 (défaut — rétrocompatible)
+priv, pub = generateKeyPair(uid="alice")
+
+# RSA 2048
+priv, pub = generateKeyPair(uid="alice", key_size=2048)
+
+# ECDSA P-256 (recommandé pour TLS)
+priv, pub = generateKeyPair(uid="bob", algorithm="EC", curve="P-256")
+
+# ECDSA P-384 (haute sécurité)
+priv, pub = generateKeyPair(uid="carol", algorithm="EC", curve="P-384")
+
+# ECDSA P-521 (ultra-sécurité)
+priv, pub = generateKeyPair(uid="dave", algorithm="EC", curve="P-521")
+
+# Ed25519 (performance, SSH)
+priv, pub = generateKeyPair(uid="eve", algorithm="Ed25519")
+
+# Ed448 (future-proof)
+priv, pub = generateKeyPair(uid="frank", algorithm="Ed448")
+
+# Avec mot de passe sur la clé privée
+priv, pub = generateKeyPair(uid="alice", algorithm="EC", curve="P-256",
+                            private_key_password="s3cr3t")
 ```
 
-**2. Création d'un certificat auto-signé**
+**Paramètres :**
 
-Fichier : createSelfSignedRootCert.py
+| Paramètre | Type | Défaut | Description |
+|-----------|------|--------|-------------|
+| `uid` | str | — | Identifiant du propriétaire (préfixe des fichiers) |
+| `key_size` | int | 4096 | Taille RSA en bits (ignoré pour EC/Ed25519/Ed448) |
+| `key_directory` | str | `"tmp/keys"` | Dossier de destination |
+| `private_key_password` | str | None | Mot de passe de chiffrement de la clé privée |
+| `algorithm` | str | `"RSA"` | `"RSA"`, `"EC"`, `"Ed25519"`, `"Ed448"` |
+| `curve` | str | `"P-256"` | `"P-256"`, `"P-384"`, `"P-521"` (EC uniquement) |
 
-Fonction : createSelfSignedRootCert
+**Retourne :** `(private_key_filename, public_key_filename)`
 
-```bash
-"""
-Crée un certificat auto-signé pour une CA root sans champ département.
+---
 
-    Args:
-        pseudo (str): Nom commun ou pseudo de la CA root.
-        company (str): Compagnie à laquelle appartient la CA root.
-        city (str): Ville de résidence de la CA root.
-        region (str): Région de la CA root.
-        country_code (str): Code pays ISO à deux lettres.
-        email (str): Adresse email de contact pour la CA root.
-        valid_days (int): Durée de validité du certificat en jours.
-        private_key_path (str): Chemin vers la clé privée de la CA root.
-        key_password (str, optional): Mot de passe pour déchiffrer la clé privée de la CA root (si nécessaire).
-        output_folder (str, optional): Dossier de destination du certificat. Par défaut "certificate".
-        output_filename (str, optional): Nom du fichier de sortie sans extension. Par défaut 'root_ca_certificate_<UID>'.
-    
-    Returns:
-        str: Chemin du fichier où le certificat auto-signé est enregistré.
-"""
+### 2. Création d'un certificat auto-signé (CA Root)
 
+Fichier : `createSelfSignedRootCert.py` — Fonction : `createSelfSignedRootCert`
+
+```python
 from cheetahpki.createSelfSignedRootCert import createSelfSignedRootCert
 
-# Exemple
 cert_path = createSelfSignedRootCert(
-    pseudo='RootCA',
-    company='MyCompany',
-    city='Lome',
-    country_code='TG',
-    valid_days=365,
-    private_key_path='path/to/private_key.pem'
+    pseudo="RootCA",
+    company="MyCompany",
+    city="Lomé",
+    region="Maritime",
+    country_code="TG",
+    email="caroot@mycompany.tg",
+    valid_days=3650,
+    private_key_path="tmp/keys/ca_root_private_key.pem",
+    output_folder="tmp/certificate/root"
 )
 ```
 
-**3. Création d'un certificat signé par la CA Intermediaire**
+---
 
-Fichier : createSignedCert.py
+### 3. Création d'un certificat CA intermédiaire
 
-Fonction : createSignedCert
+Fichier : `createSignedInterCert.py` — Fonction : `createSignedInterCert`
 
-```bash
-"""
-    Crée un certificat utilisateur et le signe avec la clé privée de la CA intermédiaire.
-
-    Args:
-        public_key_path (str): Chemin vers la clé publique de l'utilisateur à certifier.
-        pseudo (str): Nom commun (Common Name) de l'utilisateur ou du serveur.
-        company (str): Nom de l'organisation à laquelle l'utilisateur est rattaché.
-        department (str): Nom du département ou de l'unité organisationnelle.
-        city (str): Ville de résidence ou d'enregistrement de l'utilisateur.
-        region (str): Région de résidence ou d'enregistrement de l'utilisateur.
-        country_code (str): Code pays ISO à deux lettres (ex. "TG" pour Togo).
-        email (str): Adresse email associée à l'utilisateur ou au certificat.
-        valid_days (int): Durée de validité du certificat en jours à partir de la date actuelle.
-        ca_private_key_path (str): Chemin vers la clé privée de la CA intermédiaire utilisée pour la signature.
-        ca_cert_path (str): Chemin vers le certificat de la CA intermédiaire qui signe le certificat utilisateur.
-        ca_key_password (str, optional): Mot de passe pour accéder à la clé privée de la CA intermédiaire (laisser vide si aucun).
-        alt_names (list[str], optional): Liste des noms DNS alternatifs (SAN) associés au certificat au format ["cainter.test.org", "lab.test.local"].
-        ip_addresses (list[str], optional): Liste des adresses IP associées au certificat au format ["192.168.1.1"].
-        output_folder (str, optional): Dossier de destination pour enregistrer le certificat. Par défaut "certificate".
-        output_filename (str, optional): Nom du fichier de sortie (sans extension). Par défaut '<pseudo>_certificate'.
-
-    Returns:
-        str: Chemin du fichier où le certificat est enregistré.
-"""
-
-from cheetahpki.createSignedCert import createSignedCert
-
-# Exemple
-cert_path = createSignedCert(
-    public_key_path='path/to/public_key.pem',
-    uid='user123',
-    pseudo='User123',
-    company='MyCompany',
-    department='IT',
-    city='Lome',
-    region='Maritime',
-    country_code='TG',
-    email='user@mycompany.tg',
-    valid_days=365,
-    ca_private_key_path='path/to/ca_private_key.pem',
-    ca_cert_path='path/to/ca_cert.pem'
-)
-
-```
-
-**4. Vérification de la validité d'un certificat**
-
-Fichier : checkCertValidity.py
-
-Fonction : checkCertValidity
-
-```bash
-
-"""
-    Vérifie la validité d'un certificat en fonction de sa date d'expiration.
-
-    Cette fonction charge un certificat au format PEM, puis vérifie s'il est encore valide
-    en comparant sa date d'expiration avec la date et l'heure actuelles.
-
-    Args:
-        cert_file (str): Le chemin du fichier PEM contenant le certificat.
-
-    Returns:
-        int ou None: Renvoie le nombre de jours restants avant l'expiration du certificat si celui-ci est valide.
-                     Renvoie None si le certificat est expiré.
-"""
-
-from cheetahpki.checkCertValidity import checkCertValidity
-
-# Exemple
-days_remaining = checkCertValidity(cert_file='path/to/cert.pem')
-```
-
-**5. Création de certificat Intermediaire signé par une CA Root**
-
-Fichier : createSignedInterCert.py
-
-Fonction : createSignedInterCert
-
-```bash
-"""
-    Crée un certificat de CA Intermédiaire et le signe avec la clé privée de la CA root.
-
-    Args:
-        public_key_path (str): Chemin vers la clé publique de l'utilisateur à certifier.
-        pseudo (str): Nom commun (Common Name) de l'utilisateur ou du serveur.
-        company (str): Nom de l'organisation à laquelle l'utilisateur est rattaché.
-        department (str): Nom du département ou de l'unité organisationnelle.
-        city (str): Ville de résidence ou d'enregistrement de l'utilisateur.
-        region (str): Région de résidence ou d'enregistrement de l'utilisateur.
-        country_code (str): Code pays ISO à deux lettres (ex. "TG" pour Togo).
-        email (str): Adresse email associée à l'utilisateur ou au certificat.
-        valid_days (int): Durée de validité du certificat en jours à partir de la date actuelle.
-        ca_private_key_path (str): Chemin vers la clé privée de la CA intermédiaire utilisée pour la signature.
-        ca_cert_path (str): Chemin vers le certificat de la CA intermédiaire qui signe le certificat utilisateur.
-        ca_key_password (str, optional): Mot de passe pour accéder à la clé privée de la CA intermédiaire (laisser vide si aucun).
-        alt_names (list[str], optional): Liste des noms DNS alternatifs (SAN) associés au certificat au format ["cainter.test.org", "lab.test.local"].
-        ip_addresses (list[str], optional): Liste des adresses IP associées au certificat au format ["192.168.1.1"].
-        output_folder (str, optional): Dossier de destination pour enregistrer le certificat. Par défaut "certificate".
-        output_filename (str, optional): Nom du fichier de sortie (sans extension). Par défaut '<pseudo>_certificate'.
-
-    Returns:
-        str: Chemin du fichier où le certificat est enregistré.
-"""
-
+```python
 from cheetahpki.createSignedInterCert import createSignedInterCert
 
-# Exemple
-cert_path = createSignedCert(
-    public_key_path = "tmp/keys/ca_inter2_public_key.pem",
-    pseudo = "CA_inter2",
-    company = "MyCompany",
-    department = "Juridique",
-    city = "Notsè",
-    region = "Maritime",
-    country_code = "TG",
-    email = "cainter2@mycompany.tg",
-    valid_days = 365,
-    ca_private_key_path = "tmp/keys/root/ca_root_private_key.pem",
-    ca_cert_path = "tmp/certificate/root/root_ca_certificate_e80f80d1-c761-48a6-b1a9-db5729f49923.pem",
-    ca_key_password = None,
-    alt_names = ["cainter.company.tg", "lab.company.local"],
-    ip_addresses = ["192.168.1.10"],
-    output_folder="tmp/certificate",
-    output_filename = "02caInter",
+cert_path = createSignedInterCert(
+    public_key_path="tmp/keys/ca_inter_public_key.pem",
+    pseudo="CA_inter",
+    company="MyCompany",
+    department="IT",
+    city="Lomé",
+    region="Maritime",
+    country_code="TG",
+    email="cainter@mycompany.tg",
+    valid_days=1825,
+    ca_private_key_path="tmp/keys/root/ca_root_private_key.pem",
+    ca_cert_path="tmp/certificate/root/root_ca_certificate.pem",
+    output_folder="tmp/certificate/inter",
+    output_filename="ca_inter"
 )
-
 ```
 
+---
 
+### 4. Création d'un certificat utilisateur signé par la CA intermédiaire
 
-**6. Extraction d'informations sur le certificat**
+Fichier : `createSignedCert.py` — Fonction : `createSignedCert`
 
-Dossier : getCertInfo
+```python
+from cheetahpki.createSignedCert import createSignedCert
 
-**- Obtenir le propriétaire**
-
-Fichier : getOwner.py
-
-```bash
-
-"""
-    Prend en entrée un chemin vers un fichier .pem de certificat et retourne le propriétaire du certificat (CN - Common Name).
-    
-    :param cert_pem_path: Chemin vers le fichier .pem du certificat
-    :return: Le nom du propriétaire du certificat (Common Name)
-"""
-
-from cheetahpki.getCertInfo.getOwner import getOwner
-
-owner = getOwner(cert_pem_path='path/to/cert.pem')
+cert_path = createSignedCert(
+    public_key_path="tmp/keys/user_public_key.pem",
+    pseudo="user123",
+    company="MyCompany",
+    department="IT",
+    city="Lomé",
+    region="Maritime",
+    country_code="TG",
+    email="user@mycompany.tg",
+    valid_days=365,
+    ca_private_key_path="tmp/keys/ca_inter_private_key.pem",
+    ca_cert_path="tmp/certificate/inter/ca_inter.pem",
+    alt_names=["user.mycompany.tg"],
+    ip_addresses=["192.168.1.10"],
+    output_folder="tmp/certificate/users"
+)
 ```
 
-**- Obtenir le numéro de série**
+---
 
-Fichier : getSerialNumber.py
+### 5. Vérification de la validité d'un certificat
 
-```bash
+```python
+from cheetahpki.checkCertValidity import checkCertValidity
 
-"""
-    Prend en entrée un chemin vers un fichier .pem de certificat et retourne le numéro de série du certificat.
-    
-    :param cert_pem_path: Chemin vers le fichier .pem du certificat
-    :return: Le numéro de série du certificat
-"""
-
-from cheetahpki.getCertInfo.getSerialNumber import getSerialNumber
-
-serial_number = getSerialNumber(cert_pem_path='path/to/cert.pem')
+days_remaining = checkCertValidity(cert_file="path/to/cert.pem")
+# Retourne le nombre de jours restants, ou None si expiré
 ```
 
-**- Obtenir la date de début de validité**
+---
 
-Fichier : getValidityStart.py
+### 6. Extraction d'informations sur le certificat
 
-```bash
+```python
+from cheetahpki.getCertInfo import get_owner, get_serial_number, get_validity_start, get_validity_end
 
-"""
-    Prend en entrée un chemin vers un fichier .pem de certificat et retourne la date de début de validité du certificat.
-    
-    :param cert_pem_path: Chemin vers le fichier .pem du certificat
-    :return: Date de début de validité du certificat (format datetime)
-"""
-
-from cheetahpki.getCertInfo.getValidityStart import getValidityStart
-
-start_date = getValidityStart(cert_pem_path='path/to/cert.pem')
+owner        = get_owner(cert_pem_path="path/to/cert.pem")
+serial       = get_serial_number(cert_pem_path="path/to/cert.pem")
+start_date   = get_validity_start(cert_pem_path="path/to/cert.pem")
+end_date     = get_validity_end(cert_pem_path="path/to/cert.pem")
 ```
 
-**- Obtenir la date de fin de validité**
+---
 
-Fichier : getValidityEnd.py
+### 7. Empreinte cryptographique (SHA256)
 
-```bash
+```python
+from cheetahpki.fingerprint import getCertificateFingerprint, getPublicKeyFingerprint
 
-"""
-    Prend en entrée un chemin vers un fichier .pem de certificat et retourne la date de fin de validité du certificat.
-    
-    :param cert_pem_path: Chemin vers le fichier .pem du certificat
-    :return: Date de fin de validité du certificat (format datetime)
-"""
-
-from cheetahpki.getCertInfo.getValidityEnd import getValidityEnd
-
-end_date = getValidityEnd(cert_pem_path='path/to/cert.pem')
+cert_fp = getCertificateFingerprint(cert_path="path/to/cert.pem")
+key_fp  = getPublicKeyFingerprint(key_path="path/to/public_key.pem")
 ```
 
+---
 
-**7. Générer des fichier CSR**
+### 8. Génération d'un CSR
 
-Fichier : generateCsr.py
-
-Fonction : generateCsr
-
-```bash
-
-"""
-    Génère une CSR (Certificate Signing Request) au format PEM.
-
-    Args:
-        private_key (RSAPrivateKey): Clé privée utilisée pour signer la CSR.
-        country (str): Code pays à 2 lettres (ex. "TG").
-        state (str): État ou région (ex. "Maritime").
-        city (str): Ville de l'organisation (ex. "Lomé").
-        org (str): Nom de l'organisation (ex. "UCAO").
-        common_name (str): FQDN (Fully Qualified Domain Name) ou nom principal (ex. "www.ucao.local").
-        alt_names (list[str], optional): Noms DNS alternatifs (ex. ["ucao.com", "www.ucao.org"]).
-        ip_addresses (list[str], optional): Adresses IP alternatives pour le certificat (ex. ["192.168.1.1"]).
-        critical_extensions (bool, optional): Définit si les extensions doivent être critiques.
-
-    Returns:
-        bytes: CSR généré au format PEM.
-"""
-
+```python
 from cheetahpki.generateCsr import generateCsr
 
-# Exemple
-# Spécifier les informations pour le CSR
-country = "TG"
-state = "Maritime"
-city = "Lomé"
-org = "UCAO-IT"
-common_name = "www.ucao.local"
-alt_names = ["ucao.com", "lab.ucao.local"]
-ip_addresses = ["192.168.1.1", "192.168.2.1"]
+csr_pem = generateCsr(
+    private_key=private_key,       # objet clé privée cryptography
+    country="TG",
+    state="Maritime",
+    city="Lomé",
+    org="MyCompany",
+    common_name="www.mycompany.tg",
+    alt_names=["mycompany.tg", "lab.mycompany.local"],
+    ip_addresses=["192.168.1.1"]
+)
 
-# Générer le CSR
-csr = generate_csr(private_key, country, state, city, org, common_name, alt_names, ip_addresses)
-
-# Sauvegarder le CSR dans un fichier
-with open("csr.pem", "wb") as csr_file:
-    csr_file.write(csr)
-
-
+with open("csr.pem", "wb") as f:
+    f.write(csr_pem)
 ```
 
+---
 
-**8. Générer des fichier CSR**
+### 9. Parsing d'un CSR
 
-Fichier : generateCsr.py
-
-Fonction : generateCsr
-
-```bash
-
-"""
-    Analyse un fichier CSR au format PEM et extrait les informations nécessaires pour createSignedCert.
-
-    Args:
-        csr_file_path (str): Chemin du fichier CSR.
-
-    Returns:
-        dict: Dictionnaire contenant les informations du CSR.
-"""
-
+```python
 from cheetahpki.parseCsr import parseCsr
 
-# Exemple
-csr_path = "tmp/csr.pem"  # Chemin vers ton fichier CSR
-    csr_info = parseCsr(csr_path)
-    print("Informations extraites du CSR :", csr_info)
-
+csr_info = parseCsr("path/to/csr.pem")
+print(csr_info)
 ```
 
+---
+
+## Exceptions
+
+Toutes les exceptions héritent de `CertificateError` :
+
+| Exception | Description |
+|-----------|-------------|
+| `UnsupportedAlgorithmError` | Algorithme ou courbe non supporté(e) |
+| `InvalidKeySizeError` | Taille de clé RSA invalide |
+| `KeyPairGenerationError` | Échec de la génération de clé |
+| `KeySaveError` | Échec de l'écriture d'un fichier de clé |
+| `DirectoryCreationError` | Impossible de créer le répertoire cible |
+| `PrivateKeyFileNotFoundError` | Fichier de clé privée introuvable |
+| `PublicKeyFileNotFoundError` | Fichier de clé publique introuvable |
+| `PrivateKeyLoadError` | Échec du chargement de la clé privée |
+| `PublicKeyLoadError` | Échec du chargement de la clé publique |
+| `CertificateLoadError` | Échec du chargement du certificat |
+| `CertificateSaveError` | Échec de l'enregistrement du certificat |
+
+---
+
+## Changelog
+
+### 0.0.12 — 2026-04-19
+- `generateKeyPair()` : ajout support ECDSA P-256, P-384, P-521, Ed25519 et Ed448
+- Nouveau paramètre `algorithm` (`"RSA"` | `"EC"` | `"Ed25519"` | `"Ed448"`)
+- Nouveau paramètre `curve` (`"P-256"` | `"P-384"` | `"P-521"`)
+- Nouvelle exception `UnsupportedAlgorithmError`
+- Rétrocompatibilité totale avec les appels RSA existants
+
+### 0.0.11
+- Mise à jour des fonctions d'empreinte (`getCertificateFingerprint`, `getPublicKeyFingerprint`)
+
+### 0.0.9
+- Ajout génération et parsing de CSR (`generateCsr`, `parseCsr`)
+
+---
 
 ## Licence
 
-Ce projet est sous licence MIT.
-
-Développé pour simplifier la gestion des certificats et de la cryptographie en Python
-
-
+Ce projet est sous licence MIT.  
+Développé par Michel KPEKPASSI pour la plateforme PKI **vXtend_PKI**.
