@@ -64,3 +64,7 @@ class KeySaveError(CertificateError):
 class DirectoryCreationError(CertificateError):
     """Exception levée lorsqu'il est impossible de créer un répertoire pour stocker les clés ou certificats."""
     pass
+
+class UnsupportedAlgorithmError(CertificateError):
+    """Exception levée lorsque l'algorithme ou la courbe cryptographique demandé(e) n'est pas supporté(e)."""
+    pass
