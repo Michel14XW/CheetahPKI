@@ -1,286 +1,299 @@
 # CheetahPKI
 
+**Version** : 0.0.12
+**Auteur** : Michel KPEKPASSI | [GitHub](https://github.com/Michel14XW/cheetahpki)
+**Licence** : MIT | Python ≥ 3.11
 
-**Version**: 0.0.12  
-**Description**: Package pour la génération de paires de clés et de certificats numériques.  
+CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des paires de clés, créer et signer des certificats X.509, calculer des empreintes et analyser des CSR.
 
-CheetahPKI est un package Python permettant de générer des paires de clés (RSA, ECDSA, Ed25519, Ed448), de créer des certificats auto-signés, des certificats signés par une autorité de certification (CA), et de récupérer des informations sur les certificats.
+---
 
-## Fonctionnalités
+## Algorithmes supportés
 
-- **Génération de paires de clés** : RSA 2048/4096, ECDSA P-256/P-384/P-521, Ed25519, Ed448.
-- **Création de certificats auto-signés** : Génère des certificats pour des autorités racine.
-- **Création de certificats signés** : Permet de signer un certificat utilisateur via une clé privée CA.
-- **Création de certificats CA intermédiaires** : Signe un certificat CA intermédiaire via une CA root.
-- **Génération et parsing de CSR** : Crée et analyse des Certificate Signing Requests.
-- **Vérification de validité** : Vérifie la date d'expiration d'un certificat.
-- **Extraction d'informations sur les certificats** : Propriétaire, numéro de série, dates de validité.
-- **Empreinte cryptographique** : Calcule l'empreinte SHA256 d'une clé publique ou d'un certificat.
+| Algorithme | Clé         | Statut  |
+|-----------|-------------|---------|
+| RSA       | 2048 / 4096 bits | ✅ Stable |
+| ECDSA P-256 | 256 bits  | ✅ Stable |
+| ECDSA P-384 | 384 bits  | ✅ Stable |
+| ECDSA P-521 | 521 bits  | ✅ Stable |
+| Ed25519   | 256 bits    | ✅ Stable |
+| Ed448     | 448 bits    | ✅ Stable |
+
+Constantes exportées :
+
+```python
+from cheetahpki import SUPPORTED_ALGORITHMS, SUPPORTED_CURVES
+
+# SUPPORTED_ALGORITHMS = ("RSA", "EC", "Ed25519", "Ed448")
+# SUPPORTED_CURVES      = ("P-256", "P-384", "P-521")
+```
+
+---
 
 ## Installation
 
 ```bash
+# Depuis GitHub (branche main)
 pip install git+https://github.com/Michel14XW/cheetahpki.git
+
+# Depuis une archive locale (dist/)
+pip install cheetahpki-0.0.12.tar.gz
 ```
 
-## Arborescence du projet
+---
 
+## Arborescence
+
+```
 ```
 cheetahpki/
-├── generateKeyPair.py          # Génération de paires de clés (RSA, EC, Ed25519, Ed448)
-├── createSelfSignedRootCert.py # Certificat auto-signé pour CA root
-├── createSignedCert.py         # Certificat utilisateur signé par CA intermédiaire
-├── createSignedInterCert.py    # Certificat CA intermédiaire signé par CA root
-├── checkCertValidity.py        # Vérification date d'expiration
-├── fingerprint.py              # Empreinte SHA256 clé/certificat
-├── generateCsr.py              # Génération de CSR
-├── parseCsr.py                 # Parsing de CSR
-├── exceptions.py               # Exceptions personnalisées
-└── getCertInfo.py              # Extraction d'infos certificat
+├── __init__.py                ← exports publics + SUPPORTED_ALGORITHMS/CURVES
+├── generateKeyPair.py         ← RSA, ECDSA P-256/384/521, Ed25519, Ed448
+├── createSelfSignedRootCert.py
+├── createSignedCert.py        ← cert utilisateur signé par CA intermédiaire
+├── createSignedInterCert.py   ← cert CA intermédiaire signé par CA racine
+├── generateCsr.py
+├── parseCsr.py
+├── checkCertValidity.py
+├── getCertInfo.py
+├── fingerprint.py
+└── exceptions.py
 ```
 
-## Algorithmes supportés
-
-| Algorithme | Paramètre | Statut |
-|-----------|-----------|--------|
-| RSA | `key_size=2048` ou `4096` | ✅ |
-| ECDSA | `curve="P-256"` (secp256r1) | ✅ |
-| ECDSA | `curve="P-384"` (secp384r1) | ✅ |
-| ECDSA | `curve="P-521"` (secp521r1) | ✅ |
-| Ed25519 | — | ✅ |
-| Ed448 | — | ✅ |
+---
 
 ## Utilisation
+## Utilisation
 
-### 1. Génération d'une paire de clés
-
-Fichier : `generateKeyPair.py` — Fonction : `generateKeyPair`
+### 1. Génération d'une paire de clés — `generateKeyPair`
 
 ```python
-from cheetahpki.generateKeyPair import generateKeyPair
+from cheetahpki import generateKeyPair
 
-# RSA 4096 (défaut — rétrocompatible)
+# RSA 4096 (défaut — rétrocompatible avec toutes les versions précédentes)
 priv, pub = generateKeyPair(uid="alice")
 
-# RSA 2048
-priv, pub = generateKeyPair(uid="alice", key_size=2048)
+# RSA 2048 avec mot de passe
+priv, pub = generateKeyPair(uid="alice", key_size=2048,
+                             private_key_password="monMotDePasse")
 
-# ECDSA P-256 (recommandé pour TLS)
+# ECDSA P-256
 priv, pub = generateKeyPair(uid="bob", algorithm="EC", curve="P-256")
 
-# ECDSA P-384 (haute sécurité)
-priv, pub = generateKeyPair(uid="carol", algorithm="EC", curve="P-384")
+# ECDSA P-384 avec mot de passe
+priv, pub = generateKeyPair(uid="carol", algorithm="EC", curve="P-384",
+                             private_key_password="s3cr3t")
 
-# ECDSA P-521 (ultra-sécurité)
+# ECDSA P-521
 priv, pub = generateKeyPair(uid="dave", algorithm="EC", curve="P-521")
 
-# Ed25519 (performance, SSH)
+# Ed25519
 priv, pub = generateKeyPair(uid="eve", algorithm="Ed25519")
 
-# Ed448 (future-proof)
+# Ed448
 priv, pub = generateKeyPair(uid="frank", algorithm="Ed448")
-
-# Avec mot de passe sur la clé privée
-priv, pub = generateKeyPair(uid="alice", algorithm="EC", curve="P-256",
-                            private_key_password="s3cr3t")
 ```
 
 **Paramètres :**
 
 | Paramètre | Type | Défaut | Description |
 |-----------|------|--------|-------------|
-| `uid` | str | — | Identifiant du propriétaire (préfixe des fichiers) |
-| `key_size` | int | 4096 | Taille RSA en bits (ignoré pour EC/Ed25519/Ed448) |
-| `key_directory` | str | `"tmp/keys"` | Dossier de destination |
-| `private_key_password` | str | None | Mot de passe de chiffrement de la clé privée |
+| `uid` | str | — | Identifiant unique du propriétaire |
+| `key_size` | int | 4096 | Taille RSA en bits (ignoré pour EC/Ed*) |
+| `key_directory` | str | `"tmp/keys"` | Répertoire de sortie |
+| `private_key_password` | str | None | Chiffrement de la clé privée (optionnel) |
 | `algorithm` | str | `"RSA"` | `"RSA"`, `"EC"`, `"Ed25519"`, `"Ed448"` |
-| `curve` | str | `"P-256"` | `"P-256"`, `"P-384"`, `"P-521"` (EC uniquement) |
+| `curve` | str | `"P-256"` | Courbe EC uniquement : `"P-256"`, `"P-384"`, `"P-521"` |
 
-**Retourne :** `(private_key_filename, public_key_filename)`
+**Retourne :** `(private_key_path: str, public_key_path: str)`
+
+**Format des clés générées :**
+- RSA → PEM `TraditionalOpenSSL` (compatibilité OpenSSL maximale)
+- EC / Ed25519 / Ed448 → PEM `PKCS8` (standard NIST / RFC 5958)
 
 ---
 
-### 2. Création d'un certificat auto-signé (CA Root)
-
-Fichier : `createSelfSignedRootCert.py` — Fonction : `createSelfSignedRootCert`
+### 2. Certificat auto-signé (CA racine) — `createSelfSignedRootCert`
 
 ```python
-from cheetahpki.createSelfSignedRootCert import createSelfSignedRootCert
+from cheetahpki import createSelfSignedRootCert
 
 cert_path = createSelfSignedRootCert(
     pseudo="RootCA",
-    company="MyCompany",
+    company="MonEntreprise",
     city="Lomé",
     region="Maritime",
     country_code="TG",
-    email="caroot@mycompany.tg",
+    email="ca@monentreprise.tg",
     valid_days=3650,
-    private_key_path="tmp/keys/ca_root_private_key.pem",
-    output_folder="tmp/certificate/root"
+    private_key_path="tmp/keys/root_private_key.pem",
+    key_password=None,           # optionnel
+    output_folder="tmp/certs",
+    output_filename="root_ca",
 )
 ```
 
 ---
 
-### 3. Création d'un certificat CA intermédiaire
-
-Fichier : `createSignedInterCert.py` — Fonction : `createSignedInterCert`
+### 3. Certificat CA intermédiaire — `createSignedInterCert`
 
 ```python
-from cheetahpki.createSignedInterCert import createSignedInterCert
+from cheetahpki import createSignedInterCert
 
 cert_path = createSignedInterCert(
-    public_key_path="tmp/keys/ca_inter_public_key.pem",
-    pseudo="CA_inter",
-    company="MyCompany",
-    department="IT",
+    public_key_path="tmp/keys/inter_public_key.pem",
+    pseudo="CA_Inter",
+    company="MonEntreprise",
+    department="DSI",
     city="Lomé",
     region="Maritime",
     country_code="TG",
-    email="cainter@mycompany.tg",
-    valid_days=1825,
-    ca_private_key_path="tmp/keys/root/ca_root_private_key.pem",
-    ca_cert_path="tmp/certificate/root/root_ca_certificate.pem",
-    output_folder="tmp/certificate/inter",
-    output_filename="ca_inter"
+    email="inter@monentreprise.tg",
+    valid_days=365,
+    ca_private_key_path="tmp/keys/root_private_key.pem",
+    ca_cert_path="tmp/certs/root_ca.pem",
+    ca_key_password=None,
+    alt_names=["ca-inter.monentreprise.tg"],
+    ip_addresses=["192.168.1.10"],
+    output_folder="tmp/certs",
+    output_filename="inter_ca",
 )
 ```
 
 ---
 
-### 4. Création d'un certificat utilisateur signé par la CA intermédiaire
-
-Fichier : `createSignedCert.py` — Fonction : `createSignedCert`
+### 4. Certificat utilisateur — `createSignedCert`
 
 ```python
-from cheetahpki.createSignedCert import createSignedCert
+from cheetahpki import createSignedCert
 
 cert_path = createSignedCert(
     public_key_path="tmp/keys/user_public_key.pem",
-    pseudo="user123",
-    company="MyCompany",
-    department="IT",
+    pseudo="alice",
+    company="MonEntreprise",
+    department="RH",
     city="Lomé",
     region="Maritime",
     country_code="TG",
-    email="user@mycompany.tg",
-    valid_days=365,
-    ca_private_key_path="tmp/keys/ca_inter_private_key.pem",
-    ca_cert_path="tmp/certificate/inter/ca_inter.pem",
-    alt_names=["user.mycompany.tg"],
-    ip_addresses=["192.168.1.10"],
-    output_folder="tmp/certificate/users"
+    email="alice@monentreprise.tg",
+    valid_days=60,
+    ca_private_key_path="tmp/keys/inter_private_key.pem",
+    ca_cert_path="tmp/certs/inter_ca.pem",
+    ca_key_password=None,
+    alt_names=["alice.monentreprise.tg"],
+    ip_addresses=["192.168.1.50"],
+    output_folder="tmp/certs",
+    output_filename="alice_cert",
 )
 ```
 
 ---
 
-### 5. Vérification de la validité d'un certificat
+### 5. Vérification de validité — `checkCertValidity`
 
 ```python
-from cheetahpki.checkCertValidity import checkCertValidity
+from cheetahpki import checkCertValidity
 
-days_remaining = checkCertValidity(cert_file="path/to/cert.pem")
-# Retourne le nombre de jours restants, ou None si expiré
+days = checkCertValidity(cert_file="tmp/certs/alice_cert.pem")
+# Retourne le nombre de jours restants, ou None si le certificat est expiré
 ```
 
 ---
 
-### 6. Extraction d'informations sur le certificat
+### 6. Informations sur un certificat — `getCertInfo`
 
 ```python
-from cheetahpki.getCertInfo import get_owner, get_serial_number, get_validity_start, get_validity_end
+from cheetahpki import get_owner, get_serial_number, get_validity_start, get_validity_end
 
-owner        = get_owner(cert_pem_path="path/to/cert.pem")
-serial       = get_serial_number(cert_pem_path="path/to/cert.pem")
-start_date   = get_validity_start(cert_pem_path="path/to/cert.pem")
-end_date     = get_validity_end(cert_pem_path="path/to/cert.pem")
+owner  = get_owner(cert_pem_path="tmp/certs/alice_cert.pem")
+serial = get_serial_number(cert_pem_path="tmp/certs/alice_cert.pem")
+start  = get_validity_start(cert_pem_path="tmp/certs/alice_cert.pem")
+end    = get_validity_end(cert_pem_path="tmp/certs/alice_cert.pem")
 ```
 
 ---
 
-### 7. Empreinte cryptographique (SHA256)
+### 7. Empreintes (fingerprints)
 
 ```python
-from cheetahpki.fingerprint import getCertificateFingerprint, getPublicKeyFingerprint
+from cheetahpki import getCertificateFingerprint, getPublicKeyFingerprint
 
-cert_fp = getCertificateFingerprint(cert_path="path/to/cert.pem")
-key_fp  = getPublicKeyFingerprint(key_path="path/to/public_key.pem")
+fp_cert = getCertificateFingerprint(cert_pem_path="tmp/certs/alice_cert.pem")
+fp_key  = getPublicKeyFingerprint(pub_key_pem_path="tmp/keys/user_public_key.pem")
 ```
 
 ---
 
-### 8. Génération d'un CSR
+### 8. Génération et analyse de CSR
 
 ```python
-from cheetahpki.generateCsr import generateCsr
+from cheetahpki import generateCsr, parseCsr
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
+
+with open("tmp/keys/user_private_key.pem", "rb") as f:
+    private_key = load_pem_private_key(f.read(), password=None)
 
 csr_pem = generateCsr(
-    private_key=private_key,       # objet clé privée cryptography
+    private_key=private_key,
     country="TG",
     state="Maritime",
     city="Lomé",
-    org="MyCompany",
-    common_name="www.mycompany.tg",
-    alt_names=["mycompany.tg", "lab.mycompany.local"],
-    ip_addresses=["192.168.1.1"]
+    org="MonEntreprise",
+    common_name="alice.monentreprise.tg",
+    alt_names=["alice.monentreprise.tg"],
+    ip_addresses=["192.168.1.50"],
 )
 
-with open("csr.pem", "wb") as f:
+with open("tmp/alice.csr", "wb") as f:
     f.write(csr_pem)
-```
 
----
-
-### 9. Parsing d'un CSR
-
-```python
-from cheetahpki.parseCsr import parseCsr
-
-csr_info = parseCsr("path/to/csr.pem")
-print(csr_info)
+# Analyser un CSR existant
+info = parseCsr("tmp/alice.csr")
+# Retourne un dict : {common_name, country, state, city, org, alt_names, ip_addresses, ...}
 ```
 
 ---
 
 ## Exceptions
 
-Toutes les exceptions héritent de `CertificateError` :
-
-| Exception | Description |
-|-----------|-------------|
-| `UnsupportedAlgorithmError` | Algorithme ou courbe non supporté(e) |
+| Exception | Déclenchée quand |
+|-----------|-----------------|
+| `CertificateFileNotFoundError` | Fichier certificat introuvable |
+| `CertificateFileEmptyError` | Fichier certificat vide |
+| `CertificateLoadError` | Impossible de charger le certificat |
+| `CertificateSaveError` | Impossible d'enregistrer le certificat |
+| `CertificateSigningError` | Erreur lors de la signature |
+| `InvalidCertificateError` | Certificat invalide |
+| `CertificateDateError` | Dates de validité incohérentes |
+| `PrivateKeyFileNotFoundError` | Clé privée introuvable |
+| `PublicKeyFileNotFoundError` | Clé publique introuvable |
+| `PrivateKeyLoadError` | Impossible de charger la clé privée |
+| `PublicKeyLoadError` | Impossible de charger la clé publique |
 | `InvalidKeySizeError` | Taille de clé RSA invalide |
-| `KeyPairGenerationError` | Échec de la génération de clé |
-| `KeySaveError` | Échec de l'écriture d'un fichier de clé |
-| `DirectoryCreationError` | Impossible de créer le répertoire cible |
-| `PrivateKeyFileNotFoundError` | Fichier de clé privée introuvable |
-| `PublicKeyFileNotFoundError` | Fichier de clé publique introuvable |
-| `PrivateKeyLoadError` | Échec du chargement de la clé privée |
-| `PublicKeyLoadError` | Échec du chargement de la clé publique |
-| `CertificateLoadError` | Échec du chargement du certificat |
-| `CertificateSaveError` | Échec de l'enregistrement du certificat |
+| `KeyPairGenerationError` | Erreur lors de la génération de la paire |
+| `KeySaveError` | Impossible d'enregistrer la clé |
+| `DirectoryCreationError` | Impossible de créer le répertoire |
+| `UnsupportedAlgorithmError` | Algorithme ou courbe non supporté |
 
 ---
 
 ## Changelog
 
-### 0.0.12 — 2026-04-19
-- `generateKeyPair()` : ajout support ECDSA P-256, P-384, P-521, Ed25519 et Ed448
-- Nouveau paramètre `algorithm` (`"RSA"` | `"EC"` | `"Ed25519"` | `"Ed448"`)
-- Nouveau paramètre `curve` (`"P-256"` | `"P-384"` | `"P-521"`)
-- Nouvelle exception `UnsupportedAlgorithmError`
-- Rétrocompatibilité totale avec les appels RSA existants
+### 0.0.12 (2026-04-20)
+- Ajout du support ECDSA P-256, P-384, P-521 dans `generateKeyPair()`
+- Ajout du support Ed25519 et Ed448
+- Format PKCS8 pour les clés EC/Ed* (TraditionalOpenSSL conservé pour RSA)
+- Export de `SUPPORTED_ALGORITHMS` et `SUPPORTED_CURVES` dans `__init__.py`
+- Ajout de `createSignedInterCert`, `generateCsr`, `parseCsr`
+- Réécriture complète des docstrings et messages d'erreur en français
 
-### 0.0.11
-- Mise à jour des fonctions d'empreinte (`getCertificateFingerprint`, `getPublicKeyFingerprint`)
-
-### 0.0.9
-- Ajout génération et parsing de CSR (`generateCsr`, `parseCsr`)
+### 0.0.11 (précédent)
+- RSA uniquement (2048 / 4096 bits)
+- Fonctions de base : génération de clés, certificats auto-signés, certificats signés
+- Vérification de validité, extraction d'infos, empreintes
 
 ---
 
 ## Licence
 
-Ce projet est sous licence MIT.  
-Développé par Michel KPEKPASSI pour la plateforme PKI **vXtend_PKI**.
+MIT — Développé par Michel KPEKPASSI dans le cadre du projet vXtend PKI.

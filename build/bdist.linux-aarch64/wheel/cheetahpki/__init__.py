@@ -1,7 +1,7 @@
-from .checkCertValidity import checkCertValidity
+from .checkCertValidity import checkCertValidity #TODO Renommer les autres fonction en nom_propre ainsi que les fichiers
 from .createSelfSignedRootCert import is_valid_email, createSelfSignedRootCert
 from .createSignedCert import is_valid_email, createSignedCert
-from .getCertInfo import get_serial_number
+from .getCertInfo import get_serial_number #TODO faire ressortir la hierarchie
 from .getCertInfo import get_owner
 from .getCertInfo import get_validity_end
 from .getCertInfo import get_validity_start
@@ -34,35 +34,11 @@ from .parseCsr import parseCsr
 __version__ = "0.0.12"
 VERSION = __version__.split(".")
 
-# ---------------------------------------------------------------------------
-# Constantes publiques — algorithmes et courbes supportés
-# Importables directement : from cheetahpki import SUPPORTED_ALGORITHMS
-# ---------------------------------------------------------------------------
-SUPPORTED_ALGORITHMS = ("RSA", "EC", "Ed25519", "Ed448")
-SUPPORTED_CURVES = ("P-256", "P-384", "P-521")   # uniquement pour algorithm="EC"
-
 __all__ = (
-    # Fonctions de génération de clés
-    'generateKeyPair',
-    'SUPPORTED_ALGORITHMS',
-    'SUPPORTED_CURVES',
-    # Fonctions de création de certificats
-    'createSelfSignedRootCert',
-    'createSignedCert',
-    'createSignedInterCert',
-    # Fonctions CSR
-    'generateCsr',
-    'parseCsr',
-    # Fonctions d'info et de validité
     'checkCertValidity',
     'is_valid_email',
-    'get_owner',
-    'get_serial_number',
-    'get_validity_start',
-    'get_validity_end',
-    'getCertificateFingerprint',
-    'getPublicKeyFingerprint',
-    # Exceptions
+    'createSelfSignedRootCert',
+    'createSignedCert',
     'CertificateError',
     'CertificateFileNotFoundError',
     'CertificateFileEmptyError',
@@ -80,4 +56,16 @@ __all__ = (
     'KeySaveError',
     'DirectoryCreationError',
     'UnsupportedAlgorithmError',
+    'generateKeyPair',
+    'get_owner',
+    'get_serial_number',
+    'get_validity_start',
+    'get_validity_end',
+    'getCertificateFingerprint',
+    'getPublicKeyFingerprint',
+    'createSignedInterCert',
+    'generateCsr',
+    'parseCsr',
 )
+
+# update version 0.0.9

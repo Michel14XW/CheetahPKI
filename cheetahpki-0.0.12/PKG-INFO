@@ -1,25 +1,17 @@
-Metadata-Version: 2.4
+Metadata-Version: 2.1
 Name: cheetahpki
 Version: 0.0.12
 Summary: Package generation de paire de clé et de certificats numeriques
 Home-page: https://github.com/Michel14XW/cheetahpki
 Author: passah michel kpekpassi
 Author-email: kpekpassimichel@gmail.com
+License: UNKNOWN
+Platform: UNKNOWN
 Classifier: Programming Language :: Python :: 3.11
 Classifier: License :: OSI Approved :: MIT License
 Classifier: Operating System :: OS Independent
 Requires-Python: >=3.11
 License-File: LICENCE
-Requires-Dist: cryptography>=43.0.3
-Requires-Dist: djangorestframework>=3.15.2
-Dynamic: author
-Dynamic: author-email
-Dynamic: classifier
-Dynamic: description
-Dynamic: home-page
-Dynamic: license-file
-Dynamic: requires-dist
-Dynamic: requires-python
-Dynamic: summary
 
 Un package pour creer une paire de clés, de créer des certificats auto signé, des certificat signé par une autorité et de récuperer certaines informations sur le certificat
+
