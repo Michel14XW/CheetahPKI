@@ -116,6 +116,95 @@ def generateKeyPair(uid: str, key_size: int = 4096, key_directory: str = "tmp/ke
     return private_key_filename, public_key_filename
 
 
+def generateKeyPairBytes(key_size: int = 4096,
+                         private_key_password: str = None,
+                         algorithm: str = "RSA",
+                         curve: str = "P-256") -> tuple:
+    """
+    Génère une paire de clés **en mémoire** et retourne les PEM sous forme de bytes,
+    sans écrire aucun fichier sur le filesystem.
+
+    Conçue pour les backends de stockage sécurisé comme HashiCorp Vault :
+    la clé privée n'est jamais persistée sur disque.
+
+    Args:
+        key_size (int): Taille des clés RSA en bits (ignoré pour EC/Ed25519/Ed448). Défaut : 4096.
+        private_key_password (str, optional): Mot de passe pour chiffrer la clé privée.
+        algorithm (str): Algorithme de clé — "RSA" (défaut), "EC", "Ed25519", "Ed448".
+        curve (str): Courbe pour ECDSA — "P-256" (défaut), "P-384", "P-521".
+
+    Returns:
+        tuple: (private_key_pem: bytes, public_key_pem: bytes)
+            - private_key_pem : clé privée au format PEM (chiffrée si private_key_password fourni)
+            - public_key_pem  : clé publique au format PEM (SubjectPublicKeyInfo)
+
+    Raises:
+        InvalidKeySizeError: Si la taille de clé RSA est invalide.
+        UnsupportedAlgorithmError: Si l'algorithme ou la courbe n'est pas supporté(e).
+        KeyPairGenerationError: Si la génération de la paire de clés échoue.
+
+    Exemple (intégration Vault) :
+        priv_pem, pub_pem = generateKeyPairBytes(algorithm="EC", curve="P-256")
+        vault.store_private_key(uid=user_id, pem_bytes=priv_pem)
+    """
+    try:
+        if algorithm == "RSA":
+            private_key = rsa.generate_private_key(
+                public_exponent=65537,
+                key_size=key_size,
+                backend=default_backend()
+            )
+        elif algorithm == "EC":
+            if curve not in _EC_CURVES:
+                raise UnsupportedAlgorithmError(
+                    f"Courbe EC non supportée : '{curve}'. Valeurs acceptées : {list(_EC_CURVES.keys())}"
+                )
+            private_key = ec.generate_private_key(
+                curve=_EC_CURVES[curve],
+                backend=default_backend()
+            )
+        elif algorithm == "Ed25519":
+            private_key = Ed25519PrivateKey.generate()
+        elif algorithm == "Ed448":
+            private_key = Ed448PrivateKey.generate()
+        else:
+            raise UnsupportedAlgorithmError(
+                f"Algorithme non supporté : '{algorithm}'. Valeurs acceptées : RSA, EC, Ed25519, Ed448"
+            )
+    except UnsupportedAlgorithmError:
+        raise
+    except ValueError as e:
+        raise InvalidKeySizeError(f"Taille de clé invalide : {key_size}. Erreur : {e}")
+    except Exception as e:
+        raise KeyPairGenerationError(f"Erreur lors de la génération de la paire de clés: {e}")
+
+    if private_key_password and not isinstance(private_key_password, str):
+        raise ValueError("Le mot de passe doit être une chaîne de caractères valide.")
+
+    encryption_algorithm = (
+        serialization.BestAvailableEncryption(private_key_password.encode())
+        if private_key_password else serialization.NoEncryption()
+    )
+
+    private_format = (
+        serialization.PrivateFormat.TraditionalOpenSSL
+        if algorithm == "RSA"
+        else serialization.PrivateFormat.PKCS8
+    )
+
+    private_key_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=private_format,
+        encryption_algorithm=encryption_algorithm,
+    )
+    public_key_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+
+    return private_key_pem, public_key_pem
+
+
 """
 # Exemples d'utilisation :
 

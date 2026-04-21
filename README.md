@@ -1,10 +1,10 @@
 # CheetahPKI
 
-**Version** : 0.0.12
+**Version** : 0.0.13
 **Auteur** : Michel KPEKPASSI | [GitHub](https://github.com/Michel14XW/cheetahpki)
 **Licence** : MIT | Python ≥ 3.11
 
-CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des paires de clés, créer et signer des certificats X.509, calculer des empreintes et analyser des CSR.
+CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des paires de clés, créer et signer des certificats X.509, publier des CRL, extraire les métadonnées d'un certificat, calculer des empreintes et analyser des CSR.
 
 ---
 
@@ -45,17 +45,18 @@ pip install cheetahpki-0.0.12.tar.gz
 ## Arborescence
 
 ```
-```
 cheetahpki/
-├── __init__.py                ← exports publics + SUPPORTED_ALGORITHMS/CURVES
-├── generateKeyPair.py         ← RSA, ECDSA P-256/384/521, Ed25519, Ed448
+├── __init__.py                 ← exports publics + SUPPORTED_ALGORITHMS/CURVES/REVOCATION_REASONS
+├── generateKeyPair.py          ← RSA, ECDSA P-256/384/521, Ed25519, Ed448
 ├── createSelfSignedRootCert.py
-├── createSignedCert.py        ← cert utilisateur signé par CA intermédiaire
-├── createSignedInterCert.py   ← cert CA intermédiaire signé par CA racine
+├── createSignedCert.py         ← cert utilisateur signé par CA intermédiaire (+ AIA/CRL)
+├── createSignedInterCert.py    ← cert CA intermédiaire signé par CA racine (+ AIA/CRL)
 ├── generateCsr.py
 ├── parseCsr.py
+├── generateCRL.py              ← CRL RFC 5280 (nouveau 0.0.13)
 ├── checkCertValidity.py
-├── getCertInfo.py
+├── getCertInfo.py              ← helpers unitaires (CN, serial, dates)
+├── getCertificateInfo.py       ← extraction consolidée (nouveau 0.0.13)
 ├── fingerprint.py
 └── exceptions.py
 ```
@@ -157,6 +158,10 @@ cert_path = createSignedInterCert(
     ip_addresses=["192.168.1.10"],
     output_folder="tmp/certs",
     output_filename="inter_ca",
+    # Extensions nouvelles 0.0.13 (optionnelles) :
+    ocsp_url="http://pki.monentreprise.tg/ocsp/",
+    ca_issuers_url="http://pki.monentreprise.tg/ca.pem",
+    crl_url="http://pki.monentreprise.tg/crl/latest/",
 )
 ```
 
@@ -184,8 +189,17 @@ cert_path = createSignedCert(
     ip_addresses=["192.168.1.50"],
     output_folder="tmp/certs",
     output_filename="alice_cert",
+    # Extensions nouvelles 0.0.13 (optionnelles) — obligatoires en prod pour
+    # que les clients puissent vérifier la validité en ligne :
+    ocsp_url="http://pki.monentreprise.tg/ocsp/",
+    ca_issuers_url="http://pki.monentreprise.tg/ca.pem",
+    crl_url="http://pki.monentreprise.tg/crl/latest/",
 )
 ```
+
+> **Note 0.0.13** — Si l'un des trois paramètres `ocsp_url`, `ca_issuers_url`,
+> `crl_url` est omis, l'extension correspondante n'est pas injectée. Cela
+> garantit la rétrocompatibilité avec les appels existants.
 
 ---
 
@@ -200,7 +214,7 @@ days = checkCertValidity(cert_file="tmp/certs/alice_cert.pem")
 
 ---
 
-### 6. Informations sur un certificat — `getCertInfo`
+### 6. Informations sur un certificat — `getCertInfo` (helpers unitaires)
 
 ```python
 from cheetahpki import get_owner, get_serial_number, get_validity_start, get_validity_end
@@ -209,6 +223,82 @@ owner  = get_owner(cert_pem_path="tmp/certs/alice_cert.pem")
 serial = get_serial_number(cert_pem_path="tmp/certs/alice_cert.pem")
 start  = get_validity_start(cert_pem_path="tmp/certs/alice_cert.pem")
 end    = get_validity_end(cert_pem_path="tmp/certs/alice_cert.pem")
+```
+
+### 6-bis. Extraction consolidée — `getCertificateInfo` (0.0.13)
+
+Récupère toutes les métadonnées d'un certificat en un seul appel. Conçu pour
+alimenter directement les champs d'un modèle Django `Certificate` après
+émission (common_name, subject_dn, fingerprint, algo, key_size/curve, AIA, CRL DP,
+etc.).
+
+```python
+from cheetahpki import getCertificateInfo
+
+info = getCertificateInfo(cert_pem_path="tmp/certs/alice_cert.pem")
+
+info["common_name"]                   # "alice"
+info["subject_dn"]                    # "CN=alice,OU=RH,O=Acme,L=Lomé,..."
+info["issuer_dn"]                     # DN complet de la CA intermédiaire
+info["serial_number_int"]             # int — pour la CRL
+info["serial_number_hex"]             # "3F2A...", utile pour l'affichage
+info["validity_start"]                # datetime UTC
+info["validity_end"]                  # datetime UTC
+info["days_remaining"]                # int
+info["is_expired"]                    # bool
+info["key_algorithm"]                 # "RSA" | "EC" | "Ed25519" | "Ed448"
+info["key_size_or_curve"]             # "2048" | "secp256r1" | "256" | ...
+info["signature_algorithm"]           # "sha256WithRSAEncryption" | ...
+info["fingerprint_sha256"]            # "AA:BB:..."
+info["public_key_fingerprint_sha256"] # "AA:BB:..."
+info["san"]                           # {dns: [...], ip: [...], email: [...]}
+info["aia"]                           # {ocsp_urls: [...], ca_issuers_urls: [...]}
+info["crl_distribution_points"]       # ["http://.../crl/latest/", ...]
+info["basic_constraints"]             # {ca: bool, path_length: int|None}
+info["is_ca"]                         # bool
+info["key_usage"]                     # {digital_signature: True, ...}
+```
+
+---
+
+### 7. Publication de CRL — `generateCRL` (0.0.13)
+
+Produit une Certificate Revocation List signée par la CA fournie, au format PEM
+et DER. Pour une diffusion HTTP conforme RFC 5280, servir le DER avec
+`Content-Type: application/pkix-crl`.
+
+```python
+import datetime
+from cheetahpki import generateCRL, CRLRevocationEntry, SUPPORTED_REVOCATION_REASONS
+
+entries = [
+    CRLRevocationEntry(
+        serial_number=0x3F2A1E...,                         # int décimal
+        revocation_date=datetime.datetime.now(datetime.timezone.utc),
+        reason="key_compromise",                           # cf. SUPPORTED_REVOCATION_REASONS
+    ),
+]
+
+crl_pem_path, crl_der_bytes = generateCRL(
+    ca_cert_path="tmp/certs/inter_ca.pem",
+    ca_private_key_path="tmp/keys/inter_private_key.pem",
+    revoked_entries=entries,
+    crl_number=7,              # strictement croissant à chaque nouvelle CRL
+    next_update_days=7,
+    ca_key_password=None,
+    output_folder="tmp/crl",
+    output_filename="inter_ca_crl",
+)
+```
+
+**Raisons supportées** (RFC 5280 §5.3.1) :
+
+```python
+SUPPORTED_REVOCATION_REASONS = (
+    "unspecified", "key_compromise", "ca_compromise", "affiliation_changed",
+    "superseded", "cessation_of_operation", "certificate_hold",
+    "privilege_withdrawn", "aa_compromise", "remove_from_crl",
+)
 ```
 
 ---
@@ -278,6 +368,20 @@ info = parseCsr("tmp/alice.csr")
 ---
 
 ## Changelog
+
+### 0.0.13 (2026-04-21)
+- **Nouveau : `generateCRL`** — publication de CRL signée (RFC 5280) avec entrées
+  `CRLRevocationEntry` (serial, date, raison). Export PEM + DER.
+- **Nouveau : `getCertificateInfo`** — extraction consolidée des métadonnées d'un
+  certificat (CN, DN, émetteur, serial, validity, algo, courbe, fingerprints,
+  SAN, AIA, CRL DP, BasicConstraints, KeyUsage, signature_algorithm, is_expired,
+  is_ca). Conçu pour alimenter les champs d'un modèle Django `Certificate`.
+- **`createSignedCert` / `createSignedInterCert`** : ajout des paramètres
+  optionnels `ocsp_url`, `ca_issuers_url`, `crl_url` qui injectent respectivement
+  les extensions `AuthorityInformationAccess` (AIA/OCSP + CA_ISSUERS) et
+  `CRLDistributionPoints`. Rétrocompatibilité totale : ces paramètres omis →
+  aucune extension ajoutée.
+- Export de `SUPPORTED_REVOCATION_REASONS` dans `__init__.py`.
 
 ### 0.0.12 (2026-04-20)
 - Ajout du support ECDSA P-256, P-384, P-521 dans `generateKeyPair()`

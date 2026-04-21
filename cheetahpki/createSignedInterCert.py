@@ -1,6 +1,6 @@
 import os
 from cryptography import x509
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import NameOID, AuthorityInformationAccessOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
@@ -29,8 +29,9 @@ def is_valid_email(email):
     return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 
 def createSignedInterCert(public_key_path:str, pseudo:str, company:str, department:str, city:str, region:str, country_code:str, email:str,
-                     valid_days:int, ca_private_key_path:str, ca_cert_path:str, ca_key_password:str=None, alt_names: list[str] = None, 
-                     ip_addresses: list[str] = None, output_folder:str="certificate", output_filename:str=None):
+                     valid_days:int, ca_private_key_path:str, ca_cert_path:str, ca_key_password:str=None, alt_names: list[str] = None,
+                     ip_addresses: list[str] = None, output_folder:str="certificate", output_filename:str=None,
+                     ocsp_url: str = None, ca_issuers_url: str = None, crl_url: str = None):
     """
     Crée un certificat de CA Intermédiaire et le signe avec la clé privée de la CA root.
 
@@ -51,6 +52,9 @@ def createSignedInterCert(public_key_path:str, pseudo:str, company:str, departme
         ip_addresses (list[str], optional): Liste des adresses IP associées au certificat au format ["192.168.1.1"].
         output_folder (str, optional): Dossier de destination pour enregistrer le certificat. Par défaut "certificate".
         output_filename (str, optional): Nom du fichier de sortie (sans extension). Par défaut "<pseudo>_certificate".
+        ocsp_url (str, optional): URL publique du répondeur OCSP (extension AIA/OCSP).
+        ca_issuers_url (str, optional): URL publique du certificat de la CA émettrice (extension AIA/CA_ISSUERS).
+        crl_url (str, optional): URL publique de la CRL (extension CRLDistributionPoints).
 
     Returns:
         str: Chemin du fichier où le certificat est enregistré.
@@ -163,7 +167,31 @@ def createSignedInterCert(public_key_path:str, pseudo:str, company:str, departme
         x509.SubjectKeyIdentifier.from_public_key(public_key),
         x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_private_key.public_key())
     ]
-    
+
+    # AuthorityInformationAccess (OCSP + CA issuers) — injectée uniquement si fournie
+    aia_descriptions = []
+    if ocsp_url:
+        aia_descriptions.append(x509.AccessDescription(
+            AuthorityInformationAccessOID.OCSP,
+            x509.UniformResourceIdentifier(ocsp_url)
+        ))
+    if ca_issuers_url:
+        aia_descriptions.append(x509.AccessDescription(
+            AuthorityInformationAccessOID.CA_ISSUERS,
+            x509.UniformResourceIdentifier(ca_issuers_url)
+        ))
+    if aia_descriptions:
+        extensions.append(x509.AuthorityInformationAccess(aia_descriptions))
+
+    # CRLDistributionPoints — injectée uniquement si l'URL de la CRL est fournie
+    if crl_url:
+        extensions.append(x509.CRLDistributionPoints([
+            x509.DistributionPoint(
+                full_name=[x509.UniformResourceIdentifier(crl_url)],
+                relative_name=None, reasons=None, crl_issuer=None
+            )
+        ]))
+
     # Construction du certificat utilisateur
     certificate_builder = x509.CertificateBuilder().subject_name(
         subject
