@@ -1,10 +1,24 @@
 from .checkCertValidity import checkCertValidity
-from .createSelfSignedRootCert import is_valid_email, createSelfSignedRootCert
-from .createSignedCert import is_valid_email, createSignedCert
-from .getCertInfo import get_serial_number
-from .getCertInfo import get_owner
-from .getCertInfo import get_validity_end
-from .getCertInfo import get_validity_start
+from .createSelfSignedRootCert import (
+    is_valid_email,
+    createSelfSignedRootCert,
+    createSelfSignedRootCertFromBytes,
+)
+from .createSignedCert import (
+    is_valid_email,
+    createSignedCert,
+    createSignedCertFromBytes,
+)
+from .getCertInfo import (
+    get_serial_number,
+    get_serial_number_from_bytes,
+    get_owner,
+    get_owner_from_bytes,
+    get_validity_end,
+    get_validity_end_from_bytes,
+    get_validity_start,
+    get_validity_start_from_bytes,
+)
 from .getCertificateInfo import getCertificateInfo
 from .exceptions import (
     CertificateError,
@@ -26,14 +40,18 @@ from .exceptions import (
     UnsupportedAlgorithmError,
 )
 from .generateKeyPair import generateKeyPair, generateKeyPairBytes
-from .fingerprint import getCertificateFingerprint
-from .fingerprint import getPublicKeyFingerprint
-from .createSignedInterCert import createSignedInterCert
+from .fingerprint import (
+    getCertificateFingerprint,
+    getCertificateFingerprintFromBytes,
+    getPublicKeyFingerprint,
+    getPublicKeyFingerprintFromBytes,
+)
+from .createSignedInterCert import createSignedInterCert, createSignedInterCertFromBytes
 from .generateCsr import generateCsr
 from .parseCsr import parseCsr
 from .generateCRL import generateCRL, CRLRevocationEntry
 
-__version__ = "0.0.13"
+__version__ = "0.0.14"
 VERSION = __version__.split(".")
 
 # ---------------------------------------------------------------------------
@@ -59,32 +77,42 @@ SUPPORTED_REVOCATION_REASONS = (
 )
 
 __all__ = (
-    # Fonctions de génération de clés
-    'generateKeyPair',         # Écrit sur le filesystem (FileField / stockage local)
-    'generateKeyPairBytes',    # Retourne des bytes PEM en mémoire (Vault / stockage sécurisé)
+    # Génération de clés
+    'generateKeyPair',
+    'generateKeyPairBytes',
     'SUPPORTED_ALGORITHMS',
     'SUPPORTED_CURVES',
     'SUPPORTED_REVOCATION_REASONS',
-    # Fonctions de création de certificats
+    # Création de certificats — variantes filesystem
     'createSelfSignedRootCert',
     'createSignedCert',
     'createSignedInterCert',
-    # Fonctions CSR
+    # Création de certificats — variantes bytes (Vault / mémoire)
+    'createSelfSignedRootCertFromBytes',
+    'createSignedCertFromBytes',
+    'createSignedInterCertFromBytes',
+    # CSR
     'generateCsr',
     'parseCsr',
-    # Fonctions d'info et de validité
+    # Info et validité
     'checkCertValidity',
     'is_valid_email',
     'get_owner',
+    'get_owner_from_bytes',
     'get_serial_number',
+    'get_serial_number_from_bytes',
     'get_validity_start',
+    'get_validity_start_from_bytes',
     'get_validity_end',
+    'get_validity_end_from_bytes',
     'getCertificateFingerprint',
+    'getCertificateFingerprintFromBytes',
     'getPublicKeyFingerprint',
-    'getCertificateInfo',     # Nouveau (0.0.13) — extraction consolidée
+    'getPublicKeyFingerprintFromBytes',
+    'getCertificateInfo',
     # CRL
-    'generateCRL',            # Nouveau (0.0.13)
-    'CRLRevocationEntry',     # Nouveau (0.0.13)
+    'generateCRL',
+    'CRLRevocationEntry',
     # Exceptions
     'CertificateError',
     'CertificateFileNotFoundError',

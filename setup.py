@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-VERSION = '0.0.13'
+VERSION = '0.0.14'
 DESCRIPTION = 'Package generation de paire de clé et de certificats numeriques'
 LONG_DESCRIPTION = 'Un package pour creer une paire de clés, de créer des certificats auto signé, des certificat signé par une autorité et de récuperer certaines informations sur le certificat'
 

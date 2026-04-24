@@ -1,12 +1,14 @@
 # CheetahPKI
 
-**Version** : 0.0.13
+**Version** : 0.0.14
 **Auteur** : Michel KPEKPASSI | [GitHub](https://github.com/Michel14XW/cheetahpki)
 **Licence** : MIT | Python ≥ 3.11
 
 CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des paires de clés, créer et signer des certificats X.509, publier des CRL, extraire les métadonnées d'un certificat, calculer des empreintes et analyser des CSR.
 
 Conçue pour être utilisée en backend Django (projet vXtend_PKI_v2) mais utilisable dans tout projet Python.
+
+> **Nouveau en 0.0.14** — API *bytes-first* pour les workflows Vault / HSM : toutes les primitives de signature disposent désormais d'une variante `*FromBytes` qui accepte du PEM en mémoire (plutôt qu'un chemin de fichier), évitant ainsi l'écriture de matériel cryptographique sensible sur le disque. Voir la section [API bytes (0.0.14)](#api-bytes-0014).
 
 ---
 
@@ -65,7 +67,7 @@ from cheetahpki import SUPPORTED_ALGORITHMS, SUPPORTED_CURVES, SUPPORTED_REVOCAT
 pip install git+https://github.com/Michel14XW/cheetahpki.git
 
 # Depuis une archive locale
-pip install cheetahpki-0.0.13.tar.gz
+pip install cheetahpki-0.0.14.tar.gz
 ```
 
 ---
@@ -408,6 +410,92 @@ info = parseCsr("tmp/alice.csr")
 
 ---
 
+## API bytes (0.0.14)
+
+Les variantes `*FromBytes` opèrent intégralement en mémoire : elles prennent
+du PEM sous forme de `bytes` et retournent du PEM sous forme de `bytes`.
+Rien n'est écrit sur disque — idéal pour les intégrations Vault / HSM /
+services managés qui fournissent les clés via API.
+
+```python
+from cheetahpki import (
+    createSelfSignedRootCertFromBytes,
+    createSignedCertFromBytes,
+    createSignedInterCertFromBytes,
+    get_owner_from_bytes,
+    get_serial_number_from_bytes,
+    get_validity_start_from_bytes,
+    get_validity_end_from_bytes,
+)
+
+# 1. Certificat auto-signé (CA racine) à partir d'une clé privée en mémoire
+root_cert_pem: bytes = createSelfSignedRootCertFromBytes(
+    pseudo="RootCA",
+    company="Acme",
+    city="Lomé",
+    region="Maritime",
+    country_code="TG",
+    email="ca@acme.tg",
+    valid_days=3650,
+    private_key_pem=root_priv_pem,   # bytes — lus depuis Vault/KMS
+    key_password=None,
+)
+
+# 2. Certificat intermédiaire signé par la racine, tout en mémoire
+inter_cert_pem: bytes = createSignedInterCertFromBytes(
+    public_key_pem=inter_pub_pem,
+    pseudo="CA_Inter",
+    company="Acme",
+    department="DSI",
+    city="Lomé",
+    region="Maritime",
+    country_code="TG",
+    email="inter@acme.tg",
+    valid_days=1825,
+    ca_private_key_pem=root_priv_pem,
+    ca_cert_pem=root_cert_pem,
+    ocsp_url="http://pki.acme.tg/ocsp/",
+    ca_issuers_url="http://pki.acme.tg/ca.pem",
+    crl_url="http://pki.acme.tg/crl/1/latest/",
+)
+
+# 3. Certificat utilisateur signé par l'intermédiaire
+user_cert_pem: bytes = createSignedCertFromBytes(
+    public_key_pem=user_pub_pem,
+    pseudo="alice",
+    company="Acme",
+    department="RH",
+    city="Lomé",
+    region="Maritime",
+    country_code="TG",
+    email="alice@acme.tg",
+    valid_days=365,
+    ca_private_key_pem=inter_priv_pem,
+    ca_cert_pem=inter_cert_pem,
+    ocsp_url="http://pki.acme.tg/ocsp/",
+    ca_issuers_url="http://pki.acme.tg/ca.pem",
+    crl_url="http://pki.acme.tg/crl/1/latest/",
+)
+
+# 4. Métadonnées sans toucher au disque
+owner  = get_owner_from_bytes(user_cert_pem)
+serial = get_serial_number_from_bytes(user_cert_pem)
+start  = get_validity_start_from_bytes(user_cert_pem)
+end    = get_validity_end_from_bytes(user_cert_pem)
+```
+
+**Convention** : toutes les fonctions `*FromBytes` attendent et retournent
+du PEM. Si vos sources sont en DER, convertissez d'abord via
+`cryptography.x509.load_der_x509_certificate(...).public_bytes(
+serialization.Encoding.PEM)`.
+
+Les variantes chemin historiques (`createSelfSignedRootCert`,
+`createSignedCert`, `createSignedInterCert`, `get_owner`, …) sont
+conservées et délèguent désormais aux variantes bytes — rétrocompatibilité
+totale.
+
+---
+
 ## Exceptions
 
 | Exception | Déclenchée quand |
@@ -432,6 +520,17 @@ info = parseCsr("tmp/alice.csr")
 ---
 
 ## Changelog
+
+### 0.0.14 (2026-04-24)
+
+- **Nouveau : API *bytes-first*** — variantes `*FromBytes` pour toutes les primitives de signature et d'extraction :
+  - `createSelfSignedRootCertFromBytes(..., private_key_pem: bytes, ...) -> bytes`
+  - `createSignedCertFromBytes(..., public_key_pem: bytes, ca_private_key_pem: bytes, ca_cert_pem: bytes, ...) -> bytes`
+  - `createSignedInterCertFromBytes(..., public_key_pem: bytes, ca_private_key_pem: bytes, ca_cert_pem: bytes, ...) -> bytes`
+  - `get_owner_from_bytes(cert_pem: bytes)`, `get_serial_number_from_bytes(...)`, `get_validity_start_from_bytes(...)`, `get_validity_end_from_bytes(...)`
+- **Objectif** : permettre aux backends qui stockent les clés privées dans HashiCorp Vault / AWS KMS / HSM de signer sans jamais matérialiser le PEM sur disque.
+- Les fonctions historiques (chemin de fichier) sont conservées et délèguent désormais à leur variante bytes — aucune régression.
+- Bump version `__version__ = "0.0.14"`.
 
 ### 0.0.13 (2026-04-21)
 
