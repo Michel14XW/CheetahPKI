@@ -17,10 +17,37 @@ from .exceptions import (
 )
 
 
-def _signing_hash(private_key):
+_HASH_ALIASES = {
+    'sha256': hashes.SHA256,
+    'sha-256': hashes.SHA256,
+    'sha384': hashes.SHA384,
+    'sha-384': hashes.SHA384,
+    'sha512': hashes.SHA512,
+    'sha-512': hashes.SHA512,
+}
+
+
+def _resolve_hash(name):
+    if not name:
+        return hashes.SHA256()
+    key = name.strip().lower()
+    if key not in _HASH_ALIASES:
+        raise ValueError(
+            f"Algorithme de hash non supporté : {name!r} "
+            f"(acceptés : {', '.join(sorted(_HASH_ALIASES))})"
+        )
+    return _HASH_ALIASES[key]()
+
+
+def _signing_hash(private_key, signature_hash: str = None):
+    """
+    Détermine l'algorithme de hash utilisé pour la signature.
+    - Ed25519 / Ed448 → None (cryptography refuse tout hash explicite).
+    - Sinon → SHA-256 par défaut, ou SHA-384/SHA-512 si signature_hash le précise.
+    """
     if isinstance(private_key, (Ed25519PrivateKey, Ed448PrivateKey)):
         return None
-    return hashes.SHA256()
+    return _resolve_hash(signature_hash)
 
 
 def is_valid_email(email):
@@ -46,6 +73,7 @@ def createSelfSignedRootCertFromBytes(
     valid_days: int,
     private_key_pem: bytes,
     key_password: str = None,
+    signature_hash: str = None,
 ) -> bytes:
     """
     Crée un certificat auto-signé pour une CA root et renvoie ses bytes PEM
@@ -106,7 +134,7 @@ def createSelfSignedRootCertFromBytes(
         )
         .sign(
             private_key=private_key,
-            algorithm=_signing_hash(private_key),
+            algorithm=_signing_hash(private_key, signature_hash),
             backend=default_backend(),
         )
     )
@@ -126,6 +154,7 @@ def createSelfSignedRootCert(
     key_password: str = None,
     output_folder: str = None,
     output_filename: str = None,
+    signature_hash: str = None,
 ):
     """
     Crée un certificat auto-signé pour une CA root sans champ département.
@@ -152,6 +181,7 @@ def createSelfSignedRootCert(
         valid_days=valid_days,
         private_key_pem=private_key_pem,
         key_password=key_password,
+        signature_hash=signature_hash,
     )
 
     output_folder = output_folder or "certificate"

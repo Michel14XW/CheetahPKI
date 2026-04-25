@@ -51,7 +51,7 @@ from .generateCsr import generateCsr
 from .parseCsr import parseCsr
 from .generateCRL import generateCRL, CRLRevocationEntry
 
-__version__ = "0.0.14"
+__version__ = "0.0.15"
 VERSION = __version__.split(".")
 
 # ---------------------------------------------------------------------------
@@ -60,6 +60,7 @@ VERSION = __version__.split(".")
 # ---------------------------------------------------------------------------
 SUPPORTED_ALGORITHMS = ("RSA", "EC", "Ed25519", "Ed448")
 SUPPORTED_CURVES = ("P-256", "P-384", "P-521")   # uniquement pour algorithm="EC"
+SUPPORTED_SIGNATURE_HASHES = ("sha256", "sha384", "sha512")  # 0.0.15 — paramètre signature_hash des createSigned*
 
 # Raisons de révocation supportées (RFC 5280 §5.3.1). Exposées pour que les
 # applications Django puissent les utiliser comme choix dans leurs modèles.
@@ -83,6 +84,7 @@ __all__ = (
     'SUPPORTED_ALGORITHMS',
     'SUPPORTED_CURVES',
     'SUPPORTED_REVOCATION_REASONS',
+    'SUPPORTED_SIGNATURE_HASHES',
     # Création de certificats — variantes filesystem
     'createSelfSignedRootCert',
     'createSignedCert',

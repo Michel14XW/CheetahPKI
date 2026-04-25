@@ -22,10 +22,32 @@ from .exceptions import (
 )
 
 
-def _signing_hash(private_key):
+_HASH_ALIASES = {
+    'sha256': hashes.SHA256,
+    'sha-256': hashes.SHA256,
+    'sha384': hashes.SHA384,
+    'sha-384': hashes.SHA384,
+    'sha512': hashes.SHA512,
+    'sha-512': hashes.SHA512,
+}
+
+
+def _resolve_hash(name):
+    if not name:
+        return hashes.SHA256()
+    key = name.strip().lower()
+    if key not in _HASH_ALIASES:
+        raise ValueError(
+            f"Algorithme de hash non supporté : {name!r} "
+            f"(acceptés : {', '.join(sorted(_HASH_ALIASES))})"
+        )
+    return _HASH_ALIASES[key]()
+
+
+def _signing_hash(private_key, signature_hash: str = None):
     if isinstance(private_key, (Ed25519PrivateKey, Ed448PrivateKey)):
         return None
-    return hashes.SHA256()
+    return _resolve_hash(signature_hash)
 
 
 def _end_entity_key_usage(public_key):
@@ -74,6 +96,7 @@ def createSignedCertFromBytes(
     ocsp_url: str = None,
     ca_issuers_url: str = None,
     crl_url: str = None,
+    signature_hash: str = None,
 ) -> bytes:
     """
     Crée un certificat utilisateur signé par une CA intermédiaire et renvoie
@@ -173,7 +196,7 @@ def createSignedCertFromBytes(
 
     certificate = builder.sign(
         private_key=ca_private_key,
-        algorithm=_signing_hash(ca_private_key),
+        algorithm=_signing_hash(ca_private_key, signature_hash),
         backend=default_backend(),
     )
     return certificate.public_bytes(serialization.Encoding.PEM)
@@ -199,6 +222,7 @@ def createSignedCert(
     ocsp_url: str = None,
     ca_issuers_url: str = None,
     crl_url: str = None,
+    signature_hash: str = None,
 ):
     """
     Variante filesystem : lit les PEM depuis des fichiers, écrit le certificat
@@ -252,6 +276,7 @@ def createSignedCert(
         ocsp_url=ocsp_url,
         ca_issuers_url=ca_issuers_url,
         crl_url=crl_url,
+        signature_hash=signature_hash,
     )
 
     output_filename = output_filename or f"{pseudo}_certificate.pem"
