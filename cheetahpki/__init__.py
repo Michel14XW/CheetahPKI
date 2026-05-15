@@ -39,7 +39,12 @@ from .exceptions import (
     DirectoryCreationError,
     UnsupportedAlgorithmError,
 )
-from .generateKeyPair import generateKeyPair, generateKeyPairBytes
+from .generateKeyPair import (
+    generateKeyPair,
+    generateKeyPairBytes,
+    generateKeyPairBytesEx,
+    KeyPairResult,
+)
 from .fingerprint import (
     getCertificateFingerprint,
     getCertificateFingerprintFromBytes,
@@ -50,8 +55,11 @@ from .createSignedInterCert import createSignedInterCert, createSignedInterCertF
 from .generateCsr import generateCsr
 from .parseCsr import parseCsr
 from .generateCRL import generateCRL, CRLRevocationEntry
+from .checkOCSP import checkOCSPStatus
+from .extensions import DEFAULT_EXTENSIONS_BY_PROFILE
+from .exceptions import OCSPCheckError  # ré-export explicite (ajout 0.0.16)
 
-__version__ = "0.0.15"
+__version__ = "0.0.16"
 VERSION = __version__.split(".")
 
 # ---------------------------------------------------------------------------
@@ -81,6 +89,8 @@ __all__ = (
     # Génération de clés
     'generateKeyPair',
     'generateKeyPairBytes',
+    'generateKeyPairBytesEx',          # nouveau 0.0.16 — KeyPairResult enrichi
+    'KeyPairResult',                   # nouveau 0.0.16
     'SUPPORTED_ALGORITHMS',
     'SUPPORTED_CURVES',
     'SUPPORTED_REVOCATION_REASONS',
@@ -115,6 +125,10 @@ __all__ = (
     # CRL
     'generateCRL',
     'CRLRevocationEntry',
+    # OCSP (nouveau 0.0.16)
+    'checkOCSPStatus',
+    # Templates d'extensions (nouveau 0.0.16)
+    'DEFAULT_EXTENSIONS_BY_PROFILE',
     # Exceptions
     'CertificateError',
     'CertificateFileNotFoundError',
@@ -133,4 +147,5 @@ __all__ = (
     'KeySaveError',
     'DirectoryCreationError',
     'UnsupportedAlgorithmError',
+    'OCSPCheckError',                  # nouveau 0.0.16
 )

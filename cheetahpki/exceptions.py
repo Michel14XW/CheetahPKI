@@ -68,3 +68,17 @@ class DirectoryCreationError(CertificateError):
 class UnsupportedAlgorithmError(CertificateError):
     """Exception levée lorsque l'algorithme ou la courbe cryptographique demandé(e) n'est pas supporté(e)."""
     pass
+
+
+class OCSPCheckError(CertificateError):
+    """
+    Exception levée par `checkOCSPStatus` en cas d'échec de la vérification OCSP.
+
+    Causes typiques :
+        - Échec réseau (timeout, refus de connexion, DNS).
+        - Réponse OCSP malformée ou inintelligible.
+        - Réponse OCSP signalant `MALFORMED_REQUEST`, `INTERNAL_ERROR`,
+          `TRY_LATER`, `SIG_REQUIRED` ou `UNAUTHORIZED`.
+        - Construction de la requête OCSP impossible (cert/CA invalide).
+    """
+    pass

@@ -33,7 +33,6 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PrivateKey
@@ -130,7 +129,7 @@ def generateCRL(
     # 1. Charger le certificat de la CA
     try:
         with open(ca_cert_path, "rb") as f:
-            ca_cert = x509.load_pem_x509_certificate(f.read(), default_backend())
+            ca_cert = x509.load_pem_x509_certificate(f.read())
     except FileNotFoundError:
         raise CertificateFileNotFoundError(f"Certificat CA introuvable : {ca_cert_path}")
     except Exception as e:
@@ -142,7 +141,6 @@ def generateCRL(
             ca_private_key = serialization.load_pem_private_key(
                 f.read(),
                 password=ca_key_password.encode() if ca_key_password else None,
-                backend=default_backend(),
             )
     except FileNotFoundError:
         raise PrivateKeyFileNotFoundError(
@@ -181,7 +179,7 @@ def generateCRL(
             .serial_number(entry.serial_number)
             .revocation_date(revocation_date)
             .add_extension(x509.CRLReason(reason), critical=False)
-            .build(default_backend())
+            .build()
         )
         builder = builder.add_revoked_certificate(revoked_cert)
 
@@ -198,7 +196,6 @@ def generateCRL(
         crl = builder.sign(
             private_key=ca_private_key,
             algorithm=_signing_hash(ca_private_key),
-            backend=default_backend(),
         )
     except Exception as e:
         raise CertificateSigningError(f"Erreur lors de la signature de la CRL : {e}")

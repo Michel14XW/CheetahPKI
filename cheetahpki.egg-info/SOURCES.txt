@@ -3,10 +3,12 @@ README.md
 setup.py
 cheetahpki/__init__.py
 cheetahpki/checkCertValidity.py
+cheetahpki/checkOCSP.py
 cheetahpki/createSelfSignedRootCert.py
 cheetahpki/createSignedCert.py
 cheetahpki/createSignedInterCert.py
 cheetahpki/exceptions.py
+cheetahpki/extensions.py
 cheetahpki/fingerprint.py
 cheetahpki/generateCRL.py
 cheetahpki/generateCsr.py

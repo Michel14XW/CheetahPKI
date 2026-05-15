@@ -4,7 +4,6 @@ from cryptography import x509
 from cryptography.x509.oid import NameOID, AuthorityInformationAccessOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -97,10 +96,18 @@ def createSignedCertFromBytes(
     ca_issuers_url: str = None,
     crl_url: str = None,
     signature_hash: str = None,
+    extra_extensions: list = None,
 ) -> bytes:
     """
     Crée un certificat utilisateur signé par une CA intermédiaire et renvoie
     ses bytes PEM (tout en mémoire, aucun accès filesystem).
+
+    extra_extensions (list[(extension, critical)] | list[extension], optionnel,
+        cheetahpki >= 0.0.16) : extensions X.509 supplémentaires à injecter
+        avant la signature, fournies typiquement par un `CertificateTemplate`
+        côté Django (Extended Key Usage applicatif, Certificate Policies, etc.).
+        Chaque élément peut être soit un `x509.ExtensionType`, soit un tuple
+        `(extension, critical: bool)`.
     """
     if not pseudo or not company:
         raise ValueError("Les champs 'pseudo' et 'company' sont obligatoires.")
@@ -110,12 +117,12 @@ def createSignedCertFromBytes(
         raise ValueError("La durée de validité doit être positive.")
 
     try:
-        public_key = serialization.load_pem_public_key(public_key_pem, backend=default_backend())
+        public_key = serialization.load_pem_public_key(public_key_pem)
     except Exception as e:
         raise PublicKeyLoadError(f"Erreur lors du chargement de la clé publique : {e}")
 
     try:
-        ca_cert = x509.load_pem_x509_certificate(ca_cert_pem, backend=default_backend())
+        ca_cert = x509.load_pem_x509_certificate(ca_cert_pem)
     except Exception as e:
         raise CertificateLoadError(f"Erreur lors du chargement du certificat de la CA : {e}")
 
@@ -123,7 +130,6 @@ def createSignedCertFromBytes(
         ca_private_key = serialization.load_pem_private_key(
             ca_private_key_pem,
             password=ca_key_password.encode() if ca_key_password else None,
-            backend=default_backend(),
         )
     except Exception as e:
         raise PrivateKeyLoadError(f"Erreur lors du chargement de la clé privée de la CA : {e}")
@@ -194,10 +200,18 @@ def createSignedCertFromBytes(
     for ext, critical in extensions:
         builder = builder.add_extension(ext, critical=critical)
 
+    # Extensions issues d'un CertificateTemplate (Django) — cheetahpki >= 0.0.16
+    if extra_extensions:
+        for item in extra_extensions:
+            if isinstance(item, tuple):
+                ext_obj, critical = item
+            else:
+                ext_obj, critical = item, False
+            builder = builder.add_extension(ext_obj, critical=critical)
+
     certificate = builder.sign(
         private_key=ca_private_key,
         algorithm=_signing_hash(ca_private_key, signature_hash),
-        backend=default_backend(),
     )
     return certificate.public_bytes(serialization.Encoding.PEM)
 
@@ -223,6 +237,7 @@ def createSignedCert(
     ca_issuers_url: str = None,
     crl_url: str = None,
     signature_hash: str = None,
+    extra_extensions: list = None,
 ):
     """
     Variante filesystem : lit les PEM depuis des fichiers, écrit le certificat
@@ -277,6 +292,7 @@ def createSignedCert(
         ca_issuers_url=ca_issuers_url,
         crl_url=crl_url,
         signature_hash=signature_hash,
+        extra_extensions=extra_extensions,
     )
 
     output_filename = output_filename or f"{pseudo}_certificate.pem"

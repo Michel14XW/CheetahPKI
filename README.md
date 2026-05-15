@@ -1,14 +1,23 @@
 # CheetahPKI
 
-**Version** : 0.0.14
+**Version** : 0.0.16
 **Auteur** : Michel KPEKPASSI | [GitHub](https://github.com/Michel14XW/cheetahpki)
 **Licence** : MIT | Python ≥ 3.11
 
-CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des paires de clés, créer et signer des certificats X.509, publier des CRL, extraire les métadonnées d'un certificat, calculer des empreintes et analyser des CSR.
+CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des paires de clés, créer et signer des certificats X.509, publier des CRL, vérifier la révocation via OCSP, extraire les métadonnées d'un certificat, calculer des empreintes et analyser des CSR.
 
-Conçue pour être utilisée en backend Django (projet vXtend_PKI_v2) mais utilisable dans tout projet Python.
+Conçue pour être utilisée en backend Django (projet vXtend-PKI v3) mais utilisable dans tout projet Python.
 
-> **Nouveau en 0.0.14** — API *bytes-first* pour les workflows Vault / HSM : toutes les primitives de signature disposent désormais d'une variante `*FromBytes` qui accepte du PEM en mémoire (plutôt qu'un chemin de fichier), évitant ainsi l'écriture de matériel cryptographique sensible sur le disque. Voir la section [API bytes (0.0.14)](#api-bytes-0014).
+> **Nouveau en 0.0.16** — Refonte v3 :
+> - **Client OCSP léger** `checkOCSPStatus()` (RFC 6960) pour vérifier en ligne le statut d'un certificat sans dépendance HTTP tierce.
+> - **`KeyPairResult` + `generateKeyPairBytesEx()`** — dataclass enrichi exposant `is_password_protected` et `fingerprint_sha256` calculés en une passe (zéro double-chargement).
+> - **`extra_extensions`** sur `createSignedCertFromBytes` / `createSignedInterCertFromBytes` — injection d'extensions X.509 personnalisées via un `CertificateTemplate` côté Django.
+> - **`DEFAULT_EXTENSIONS_BY_PROFILE`** — profils EKU prêts à l'emploi : `tls_server`, `tls_client`, `email_smime`, `code_signing`.
+> - **Nettoyage `default_backend()`** — suppression complète des `backend=default_backend()` (déprécié depuis `cryptography` 3.x). Le module charge désormais sans aucun `CryptographyDeprecationWarning`.
+>
+> Détails : voir [Changelog 0.0.16](#0016-2026-05-15).
+>
+> **Nouveau en 0.0.14** — API *bytes-first* pour les workflows Vault / HSM : toutes les primitives de signature disposent d'une variante `*FromBytes` qui accepte du PEM en mémoire (plutôt qu'un chemin de fichier). Voir la section [API bytes (0.0.14)](#api-bytes-0014).
 
 ---
 
@@ -27,6 +36,11 @@ Conçue pour être utilisée en backend Django (projet vXtend_PKI_v2) mais utili
   - [7. Publication de CRL](#7-publication-de-crl--generatecrl-0013)
   - [8. Empreintes (fingerprints)](#8-empreintes-fingerprints)
   - [9. Génération et analyse de CSR](#9-génération-et-analyse-de-csr)
+- [API bytes (0.0.14)](#api-bytes-0014)
+- [Nouveautés 0.0.16](#nouveautés-0016)
+  - [KeyPairResult — paire de clés enrichie](#keypairresult--paire-de-clés-enrichie)
+  - [Client OCSP — checkOCSPStatus](#client-ocsp--checkocspstatus)
+  - [Profils d'extensions — DEFAULT_EXTENSIONS_BY_PROFILE](#profils-dextensions--default_extensions_by_profile)
 - [Exceptions](#exceptions)
 - [Changelog](#changelog)
 - [Licence](#licence)
@@ -67,7 +81,12 @@ from cheetahpki import SUPPORTED_ALGORITHMS, SUPPORTED_CURVES, SUPPORTED_REVOCAT
 pip install git+https://github.com/Michel14XW/cheetahpki.git
 
 # Depuis une archive locale
-pip install cheetahpki-0.0.14.tar.gz
+pip install dist/cheetahpki-0.0.16.tar.gz
+# ou en wheel
+pip install dist/cheetahpki-0.0.16-py3-none-any.whl
+
+# En mode éditable (dev local)
+pip install -e .
 ```
 
 ---
@@ -78,17 +97,21 @@ pip install cheetahpki-0.0.14.tar.gz
 cheetahpki/
 ├── __init__.py                 ← exports publics + constantes SUPPORTED_*
 ├── generateKeyPair.py          ← RSA, ECDSA P-256/384/521, Ed25519, Ed448
+│                                  + KeyPairResult dataclass (0.0.16)
+│                                  + generateKeyPairBytesEx() (0.0.16)
 ├── createSelfSignedRootCert.py ← certificat CA racine auto-signé
-├── createSignedCert.py         ← cert utilisateur signé par CA (+ AIA/CRL 0.0.13)
-├── createSignedInterCert.py    ← cert CA intermédiaire signé par CA racine (+ AIA/CRL 0.0.13)
+├── createSignedCert.py         ← cert utilisateur signé par CA (+ AIA/CRL 0.0.13, extra_extensions 0.0.16)
+├── createSignedInterCert.py    ← cert CA intermédiaire signé par CA racine (+ AIA/CRL 0.0.13, extra_extensions 0.0.16)
 ├── generateCsr.py              ← génération de CSR à partir d'une clé privée
 ├── parseCsr.py                 ← analyse d'un fichier CSR existant
 ├── generateCRL.py              ← CRL RFC 5280 (nouveau 0.0.13)
 ├── checkCertValidity.py        ← jours restants avant expiration
+├── checkOCSP.py                ← client OCSP RFC 6960 (nouveau 0.0.16)
 ├── getCertInfo.py              ← helpers unitaires (CN, serial, dates)
 ├── getCertificateInfo.py       ← extraction consolidée (nouveau 0.0.13)
+├── extensions.py               ← DEFAULT_EXTENSIONS_BY_PROFILE (nouveau 0.0.16)
 ├── fingerprint.py              ← empreintes SHA-256 de certificat et de clé publique
-└── exceptions.py               ← hiérarchie d'exceptions typées
+└── exceptions.py               ← hiérarchie d'exceptions typées (+ OCSPCheckError 0.0.16)
 ```
 
 ---
@@ -496,6 +519,128 @@ totale.
 
 ---
 
+## Nouveautés 0.0.16
+
+### KeyPairResult — paire de clés enrichie
+
+`generateKeyPairBytesEx()` retourne un `KeyPairResult` (dataclass `frozen`) qui
+contient à la fois les PEM, l'algorithme, la taille/courbe, le flag
+`is_password_protected` (utile pour alimenter `KeyPair.is_password_protected`
+côté Django) **et** le fingerprint SHA-256 de la clé publique — évite un
+second chargement via `getPublicKeyFingerprintFromBytes`.
+
+```python
+from cheetahpki import generateKeyPairBytesEx, KeyPairResult
+
+result: KeyPairResult = generateKeyPairBytesEx(
+    algorithm="EC",
+    curve="P-256",
+    private_key_password="s3cret",
+)
+
+result.private_key_pem        # bytes
+result.public_key_pem         # bytes
+result.key_algorithm          # "EC"
+result.key_size_or_curve      # "P-256"
+result.is_password_protected  # True
+result.fingerprint_sha256     # "DD:A2:..."
+```
+
+La fonction historique `generateKeyPairBytes()` reste inchangée et continue
+de retourner `(priv_pem, pub_pem)` — **rétrocompatibilité totale**. Les
+intégrations qui veulent les métadonnées enrichies basculent simplement vers
+`generateKeyPairBytesEx`.
+
+### Client OCSP — `checkOCSPStatus`
+
+Client OCSP minimal (RFC 6960) basé uniquement sur `cryptography` et la
+stdlib (`urllib`) — aucune dépendance HTTP tierce, ce qui simplifie le
+packaging et reste cohérent avec `cryptography>=43.0.3`.
+
+```python
+from cheetahpki import checkOCSPStatus, OCSPCheckError
+
+try:
+    status, reason, this_update = checkOCSPStatus(
+        cert_pem=user_cert_pem,           # bytes PEM du cert à vérifier
+        ca_cert_pem=inter_ca_pem,         # bytes PEM de la CA émettrice
+        ocsp_url="http://pki.example.org/ocsp/",
+        timeout=10,                       # secondes
+    )
+
+    if status == "GOOD":
+        print("Certificat valide selon le répondeur OCSP.")
+    elif status == "REVOKED":
+        print(f"Certificat révoqué — raison : {reason}")
+    elif status == "UNKNOWN":
+        print("Certificat inconnu du répondeur (vérifier la chaîne).")
+
+except OCSPCheckError as exc:
+    print(f"Échec OCSP : {exc}")
+```
+
+**Retour** : `(status: str, revocation_reason: str | None, this_update: datetime)`
+où `status ∈ {"GOOD", "REVOKED", "UNKNOWN"}` et `revocation_reason` est l'une
+des valeurs de `SUPPORTED_REVOCATION_REASONS` (ou `None` si non révoqué).
+
+`OCSPCheckError` couvre : échec réseau, réponse OCSP malformée, statut non
+SUCCESSFUL (MALFORMED_REQUEST, INTERNAL_ERROR, TRY_LATER, …).
+
+### Profils d'extensions — `DEFAULT_EXTENSIONS_BY_PROFILE`
+
+Les fonctions de signature `createSignedCertFromBytes` et
+`createSignedInterCertFromBytes` acceptent désormais le paramètre optionnel
+`extra_extensions` : une liste d'extensions X.509 supplémentaires injectées
+avant la signature. Chaque élément est soit un `x509.ExtensionType`, soit
+un tuple `(extension, critical: bool)`.
+
+`DEFAULT_EXTENSIONS_BY_PROFILE` fournit 4 profils EKU prêts à l'emploi :
+
+```python
+from cheetahpki import (
+    DEFAULT_EXTENSIONS_BY_PROFILE,
+    createSignedCertFromBytes,
+)
+
+# Profils disponibles : "tls_server", "tls_client", "email_smime", "code_signing"
+extras = DEFAULT_EXTENSIONS_BY_PROFILE["email_smime"]
+
+cert_pem = createSignedCertFromBytes(
+    public_key_pem=user_pub_pem,
+    pseudo="alice", company="Acme", department="RH",
+    city="Lomé", region="Maritime", country_code="TG",
+    email="alice@acme.tg", valid_days=365,
+    ca_private_key_pem=inter_priv_pem,
+    ca_cert_pem=inter_cert_pem,
+    extra_extensions=extras,
+)
+```
+
+> ⚠️ **OID unique** : X.509 interdit deux extensions du même OID dans le
+> même certificat. La signature par défaut inclut déjà un `ExtendedKeyUsage`
+> (`serverAuth` + `clientAuth`) — ne pas ré-injecter d'EKU via
+> `extra_extensions` si vous comptez réutiliser cet emplacement. Utilisez
+> `extra_extensions` plutôt pour des extensions complémentaires :
+> `CertificatePolicies`, `NameConstraints`, `SubjectKeyIdentifier` custom, etc.
+
+Pour ajouter votre propre profil :
+
+```python
+from cryptography import x509
+from cryptography.x509.oid import ObjectIdentifier
+
+my_policy_oid = ObjectIdentifier("1.3.6.1.4.1.99999.1.1")
+custom_profile = [
+    (x509.CertificatePolicies([
+        x509.PolicyInformation(my_policy_oid, None),
+    ]), False),
+]
+
+cert_pem = createSignedCertFromBytes(..., extra_extensions=custom_profile)
+```
+
+---
+
 ## Exceptions
 
 | Exception | Déclenchée quand |
@@ -516,10 +661,40 @@ totale.
 | `KeySaveError` | Impossible d'enregistrer la clé sur le filesystem. |
 | `DirectoryCreationError` | Impossible de créer le répertoire de sortie. |
 | `UnsupportedAlgorithmError` | Algorithme ou courbe non supporté (voir `SUPPORTED_ALGORITHMS`, `SUPPORTED_CURVES`). |
+| `OCSPCheckError` *(0.0.16)* | Échec d'une vérification OCSP — réseau, réponse malformée, statut non SUCCESSFUL. |
 
 ---
 
 ## Changelog
+
+### 0.0.16 (2026-05-15)
+
+- **Nouveau : `checkOCSPStatus()`** — client OCSP léger RFC 6960. Retourne
+  `(status, revocation_reason, this_update)`. Aucune dépendance HTTP tierce
+  (`urllib` stdlib + `cryptography.x509.ocsp`). Voir
+  [Client OCSP — checkOCSPStatus](#client-ocsp--checkocspstatus).
+- **Nouveau : `KeyPairResult` + `generateKeyPairBytesEx()`** — dataclass
+  `frozen` exposant `private_key_pem`, `public_key_pem`, `key_algorithm`,
+  `key_size_or_curve`, `is_password_protected`, `fingerprint_sha256`. Permet
+  d'alimenter directement les champs Django `KeyPair.is_password_protected`
+  et `KeyPair.fingerprint_sha256` sans rechargement.
+- **Nouveau : paramètre `extra_extensions`** sur `createSignedCertFromBytes`
+  et `createSignedInterCertFromBytes` — injection d'extensions X.509 custom
+  (typiquement issues d'un `CertificateTemplate` côté Django).
+- **Nouveau : `DEFAULT_EXTENSIONS_BY_PROFILE`** — 4 profils EKU prêts à
+  l'emploi : `tls_server`, `tls_client`, `email_smime`, `code_signing`.
+- **Nouveau : `OCSPCheckError`** — exception dédiée pour les échecs OCSP
+  (réseau, réponse malformée, statut non SUCCESSFUL).
+- **Nettoyage : suppression complète des `backend=default_backend()`** dans
+  `generateKeyPair.py`, `createSignedInterCert.py`, `generateCRL.py`.
+  L'API moderne de `cryptography` (>= 3.x) gère le backend implicitement.
+  Effet : `python -W error -c "import cheetahpki"` ne lève plus aucun
+  `CryptographyDeprecationWarning`. Corrige aussi un `NameError` latent
+  dans `createSignedInterCertFromBytes` (l'import `default_backend` manquait).
+- **Rétrocompatibilité** : `generateKeyPairBytes()` continue de retourner
+  `(priv_pem, pub_pem)`. Toutes les anciennes signatures restent valides ;
+  les nouveaux paramètres (`extra_extensions`) sont optionnels.
+- Bump version `__version__ = "0.0.16"`, `setup.py VERSION = "0.0.16"`.
 
 ### 0.0.14 (2026-04-24)
 
