@@ -1,6 +1,6 @@
 # CheetahPKI
 
-**Version** : 0.0.16
+**Version** : 0.0.17
 **Auteur** : Michel KPEKPASSI | [GitHub](https://github.com/Michel14XW/cheetahpki)
 **Licence** : MIT | Python ≥ 3.11
 
@@ -8,6 +8,11 @@ CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des 
 
 Conçue pour être utilisée en backend Django (projet vXtend-PKI v3) mais utilisable dans tout projet Python.
 
+> **Nouveau en 0.0.17** — `generateCsr()` accepte désormais des clés Ed25519 et Ed448.
+> Un helper interne `_hash_for_key()` détermine l'algorithme de hash de signature selon le type de clé : `None` pour Ed25519 / Ed448 (hash intégré au schéma de signature, exigé par `cryptography`), `SHA-256` pour RSA / ECDSA (comportement historique préservé). Corrige le `ValueError: "Algorithm must be None when signing via ed25519 or ed448"` rencontré lors de la génération d'une CSR avec une clé Edwards. Rétrocompatibilité totale — aucun changement de signature.
+>
+> Détails : voir [Changelog 0.0.17](#0017-2026-05-20).
+>
 > **Nouveau en 0.0.16** — Refonte v3 :
 > - **Client OCSP léger** `checkOCSPStatus()` (RFC 6960) pour vérifier en ligne le statut d'un certificat sans dépendance HTTP tierce.
 > - **`KeyPairResult` + `generateKeyPairBytesEx()`** — dataclass enrichi exposant `is_password_protected` et `fingerprint_sha256` calculés en une passe (zéro double-chargement).
@@ -81,9 +86,9 @@ from cheetahpki import SUPPORTED_ALGORITHMS, SUPPORTED_CURVES, SUPPORTED_REVOCAT
 pip install git+https://github.com/Michel14XW/cheetahpki.git
 
 # Depuis une archive locale
-pip install dist/cheetahpki-0.0.16.tar.gz
+pip install dist/cheetahpki-0.0.17.tar.gz
 # ou en wheel
-pip install dist/cheetahpki-0.0.16-py3-none-any.whl
+pip install dist/cheetahpki-0.0.17-py3-none-any.whl
 
 # En mode éditable (dev local)
 pip install -e .
@@ -666,6 +671,19 @@ cert_pem = createSignedCertFromBytes(..., extra_extensions=custom_profile)
 ---
 
 ## Changelog
+
+### 0.0.17 (2026-05-20)
+
+- **Correctif : `generateCsr()` supporte Ed25519 et Ed448.** Ajout du helper
+  interne `_hash_for_key(private_key)` qui retourne `None` pour les clés
+  Edwards (`Ed25519PrivateKey`, `Ed448PrivateKey`) et `hashes.SHA256()` pour
+  RSA / ECDSA. Sans ce correctif, signer une CSR avec une clé Ed25519 / Ed448
+  levait `ValueError: "Algorithm must be None when signing via ed25519 or
+  ed448"` (issue 046 vXtend).
+- **Rétrocompatibilité totale** : la signature publique de `generateCsr()`
+  est inchangée. Les appels existants avec des clés RSA / ECDSA continuent
+  d'utiliser SHA-256 — aucun comportement modifié pour ces algorithmes.
+- Bump version `__version__ = "0.0.17"`, `setup.py VERSION = "0.0.17"`.
 
 ### 0.0.16 (2026-05-15)
 

@@ -1,9 +1,21 @@
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.asymmetric import rsa, ed25519, ed448
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import serialization
 import ipaddress
+
+
+def _hash_for_key(private_key):
+    """Retourne le hash de signature compatible avec le type de clé.
+
+    Ed25519 / Ed448 imposent `algorithm=None` (le hash est intégré au
+    schéma de signature). RSA / ECDSA acceptent SHA-256 (défaut historique
+    de cheetahpki).
+    """
+    if isinstance(private_key, (ed25519.Ed25519PrivateKey, ed448.Ed448PrivateKey)):
+        return None
+    return hashes.SHA256()
 
 def generateCsr(
     private_key: rsa.RSAPrivateKey,
@@ -73,8 +85,10 @@ def generateCsr(
     for ext in extensions:
         csr_builder = csr_builder.add_extension(ext, critical=critical_extensions)
 
-    # Signer la CSR avec la clé privée
-    csr = csr_builder.sign(private_key, hashes.SHA256())
+    # Signer la CSR avec la clé privée. Pour Ed25519 / Ed448 cryptography
+    # impose `algorithm=None` (hash intégré) — sinon ValueError "Algorithm
+    # must be None when signing via ed25519 or ed448". Cf. issue 046 vXtend.
+    csr = csr_builder.sign(private_key, _hash_for_key(private_key))
 
     # Retourner la CSR en bytes au format PEM
     return csr.public_bytes(encoding=serialization.Encoding.PEM)

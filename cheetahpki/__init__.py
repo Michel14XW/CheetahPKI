@@ -59,7 +59,7 @@ from .checkOCSP import checkOCSPStatus
 from .extensions import DEFAULT_EXTENSIONS_BY_PROFILE
 from .exceptions import OCSPCheckError  # ré-export explicite (ajout 0.0.16)
 
-__version__ = "0.0.16"
+__version__ = "0.0.17"
 VERSION = __version__.split(".")
 
 # ---------------------------------------------------------------------------
