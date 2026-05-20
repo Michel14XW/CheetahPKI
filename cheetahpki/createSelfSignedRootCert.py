@@ -2,7 +2,6 @@ import os
 from cryptography import x509
 from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PrivateKey
@@ -93,7 +92,6 @@ def createSelfSignedRootCertFromBytes(
         private_key = serialization.load_pem_private_key(
             private_key_pem,
             password=key_password.encode() if key_password else None,
-            backend=default_backend(),
         )
     except (ValueError, TypeError) as e:
         raise PrivateKeyLoadError(f"Échec du chargement de la clé privée : {e}")
@@ -135,7 +133,6 @@ def createSelfSignedRootCertFromBytes(
         .sign(
             private_key=private_key,
             algorithm=_signing_hash(private_key, signature_hash),
-            backend=default_backend(),
         )
     )
 

@@ -1,5 +1,4 @@
 from cryptography.x509 import load_pem_x509_certificate
-from cryptography.hazmat.backends import default_backend
 from datetime import datetime, timezone
 from .exceptions import (
     CertificateFileNotFoundError,
@@ -35,7 +34,7 @@ def checkCertValidity(cert_file:str):
 
         # Charger le certificat
         try:
-            cert = load_pem_x509_certificate(cert_data, default_backend())
+            cert = load_pem_x509_certificate(cert_data)
         except Exception as e:
             raise CertificateLoadError(f"Échec du chargement du certificat : {e}")
 

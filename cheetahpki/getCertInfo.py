@@ -1,9 +1,8 @@
 from cryptography import x509
-from cryptography.hazmat.backends import default_backend
 
 
 def _load_cert(cert_pem: bytes):
-    return x509.load_pem_x509_certificate(cert_pem, default_backend())
+    return x509.load_pem_x509_certificate(cert_pem)
 
 
 def _read_path(cert_pem_path: str) -> bytes:
