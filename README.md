@@ -63,6 +63,25 @@ Conçue pour être utilisée en backend Django (projet vXtend-PKI v3) mais utili
 | Ed25519 | 256 bits | ✅ Stable |
 | Ed448 | 448 bits | ✅ Stable |
 
+### Algorithmes post-quantiques (0.0.18)
+
+| Algorithme | Famille | Niveau NIST | Norme | Statut |
+|-----------|---------|-------------|-------|--------|
+| ML-DSA-44 (Dilithium2) | Réseaux | 2 | FIPS 204 | 🧪 Expérimental |
+| ML-DSA-65 (Dilithium3) | Réseaux | 3 | FIPS 204 | 🧪 Expérimental |
+| ML-DSA-87 (Dilithium5) | Réseaux | 5 | FIPS 204 | 🧪 Expérimental |
+| Falcon-512 | Réseaux NTRU | 1 | FIPS 206 (draft) | 🧪 Expérimental |
+| Falcon-1024 | Réseaux NTRU | 5 | FIPS 206 (draft) | 🧪 Expérimental |
+| SLH-DSA-SHA2-128f/128s/192f/256f | Haché | 1–5 | FIPS 205 | 🧪 Expérimental |
+| SLH-DSA-SHAKE-128f/256f | Haché | 1–5 | FIPS 205 | 🧪 Expérimental |
+
+> **Production :** installer `liboqs-python` (`pip install liboqs-python`) qui
+> fournit toutes les familles ci-dessus via la bibliothèque C
+> [liboqs](https://openquantumsafe.org/). Sans liboqs, un **fallback Python natif**
+> couvre **uniquement ML-DSA-65** — il est *interne-cohérent* (sign/verify
+> fonctionnent) mais **non interopérable** et **non audité** : RECHERCHE / DÉMO
+> uniquement, jamais en production. Voir [Post-quantique (0.0.18)](#post-quantique-018).
+
 Constantes exportées :
 
 ```python
@@ -75,6 +94,14 @@ from cheetahpki import SUPPORTED_ALGORITHMS, SUPPORTED_CURVES, SUPPORTED_REVOCAT
 #                                  "cessation_of_operation", "certificate_hold",
 #                                  "privilege_withdrawn", "aa_compromise",
 #                                  "remove_from_crl")
+
+from cheetahpki import SUPPORTED_PQC_ALGORITHMS, PQC_ALGORITHMS, PQC_BACKEND
+# SUPPORTED_PQC_ALGORITHMS = ("ML-DSA-44", "ML-DSA-65", "ML-DSA-87",
+#                             "Falcon-512", "Falcon-1024",
+#                             "SLH-DSA-SHA2-128f", "SLH-DSA-SHA2-128s",
+#                             "SLH-DSA-SHA2-192f", "SLH-DSA-SHA2-256f",
+#                             "SLH-DSA-SHAKE-128f", "SLH-DSA-SHAKE-256f")
+# PQC_BACKEND = "liboqs" | "python_native"
 ```
 
 ---
@@ -86,9 +113,9 @@ from cheetahpki import SUPPORTED_ALGORITHMS, SUPPORTED_CURVES, SUPPORTED_REVOCAT
 pip install git+https://github.com/Michel14XW/cheetahpki.git
 
 # Depuis une archive locale
-pip install dist/cheetahpki-0.0.17.tar.gz
+pip install dist/cheetahpki-0.0.18.tar.gz
 # ou en wheel
-pip install dist/cheetahpki-0.0.17-py3-none-any.whl
+pip install dist/cheetahpki-0.0.18-py3-none-any.whl
 
 # En mode éditable (dev local)
 pip install -e .
@@ -115,6 +142,7 @@ cheetahpki/
 ├── getCertInfo.py              ← helpers unitaires (CN, serial, dates)
 ├── getCertificateInfo.py       ← extraction consolidée (nouveau 0.0.13)
 ├── extensions.py               ← DEFAULT_EXTENSIONS_BY_PROFILE (nouveau 0.0.16)
+├── pqc.py                       ← signatures post-quantiques ML-DSA/Falcon/SLH-DSA (nouveau 0.0.18)
 ├── fingerprint.py              ← empreintes SHA-256 de certificat et de clé publique
 └── exceptions.py               ← hiérarchie d'exceptions typées (+ OCSPCheckError 0.0.16)
 ```
@@ -524,6 +552,94 @@ totale.
 
 ---
 
+## Post-quantique (0.0.18)
+
+CheetahPKI 0.0.18 introduit un module `pqc` qui ajoute le support des schémas de
+signature résistants à l'ordinateur quantique normalisés (ou en cours de
+normalisation) par le NIST : **ML-DSA** (FIPS 204, ex-Dilithium), **Falcon**
+(FN-DSA, FIPS 206 *draft*) et **SLH-DSA** (FIPS 205, ex-SPHINCS+).
+
+### Stratégie en deux couches
+
+1. **liboqs (production)** — si `liboqs-python` est installé, *tous* les
+   algorithmes du catalogue sont disponibles, via la bibliothèque C
+   [Open Quantum Safe](https://openquantumsafe.org/).
+2. **Fallback Python natif (recherche)** — si liboqs est absent, seul
+   **ML-DSA-65** est disponible via une implémentation Python pure. Elle est
+   **interne-cohérente** (une signature produite est vérifiable localement) mais
+   **non interopérable** avec liboqs/OpenSSL et **non auditée** :
+   RECHERCHE / DÉMO uniquement.
+
+```python
+from cheetahpki import PQC_BACKEND, PQC_AVAILABLE, list_pqc_algorithms
+print(PQC_BACKEND)            # "liboqs" ou "python_native"
+print(list_pqc_algorithms())  # algos réellement utilisables sur ce système
+```
+
+### Génération de clés — `generateKeyPairPQC`
+
+Retourne un `PQCKeyPairResult` (dataclass `frozen`) calqué sur `KeyPairResult`
+classique (mêmes champs `private_key_pem` / `public_key_pem` /
+`is_password_protected` / `fingerprint_sha256`), enrichi de `backend` et
+`is_experimental`. La clé publique est encodée en **SubjectPublicKeyInfo** PEM,
+la clé privée en **PKCS#8** PEM (ou, si un mot de passe est fourni, dans un
+conteneur chiffré `PQC ENCRYPTED PRIVATE KEY` — PBKDF2-SHA256 + AES-256-GCM).
+
+```python
+from cheetahpki import generateKeyPairPQC, load_pqc_private_key_pem
+
+kp = generateKeyPairPQC("ML-DSA-65")            # alias acceptés : "Dilithium3"
+print(kp.key_algorithm, kp.backend, kp.fingerprint_sha256)
+
+# Clé privée chiffrée
+kpe = generateKeyPairPQC("ML-DSA-65", private_key_password="motdepasse")
+alg, raw_secret = load_pqc_private_key_pem(kpe.private_key_pem, "motdepasse")
+```
+
+### Certificat X.509 signé par une CA PQC — `createSignedCertPQC`
+
+`cryptography` ne sait pas (encore) signer un certificat X.509 avec une clé
+ML-DSA/Falcon/SLH-DSA. CheetahPKI encode donc lui-même le **TBSCertificate**
+(RFC 5280) et le signe via le backend PQC ; l'OID de signature provient du
+catalogue `PQC_ALGORITHMS`. Le certificat produit se charge avec
+`cryptography.x509.load_pem_x509_certificate` (extensions BasicConstraints,
+KeyUsage, EKU, SAN, SKI, AKI, AIA, CRLDP comprises).
+
+```python
+from cheetahpki import generateKeyPairPQC, createSignedCertPQC
+
+ca   = generateKeyPairPQC("ML-DSA-65")
+leaf = generateKeyPairPQC("ML-DSA-65")
+
+cert_pem = createSignedCertPQC(
+    subject_public_key_pem=leaf.public_key_pem,
+    pseudo="alice", company="ACME", department="IT",
+    city="Lomé", region="Maritime", country_code="TG",
+    email="alice@acme.tg", valid_days=365,
+    ca_private_key_pem=ca.private_key_pem,
+    ca_public_key_pem=ca.public_key_pem,          # pour l'AuthorityKeyIdentifier
+    ca_subject={"common_name": "ACME Root PQC", "country_code": "TG",
+                "company": "ACME"},
+    ca_algorithm="ML-DSA-65",
+    ocsp_url="http://ocsp.acme.tg",
+    crl_url="http://crl.acme.tg/root.crl",
+    alt_names=["alice.acme.tg"], ip_addresses=["10.0.0.5"],
+)
+# CA intermédiaire : is_ca=True, path_length=0
+```
+
+### Catalogue `PQC_ALGORITHMS`
+
+Dictionnaire `{nom canonique -> métadonnées}` : `oid`, `family`, `type`
+(`lattice`/`hash`), `nist_level`, `fips`, `experimental`, `oqs_names`,
+`aliases`, `summary`. `resolve_pqc_algorithm("Dilithium3")` renvoie
+`"ML-DSA-65"` ; `is_pqc_algorithm(name)` teste l'appartenance.
+
+> ⚠ **OID Falcon provisoires** : FN-DSA (FIPS 206) n'est pas finalisé ; les OID
+> utilisés (`1.3.9999.3.*`) sont ceux d'interopérabilité OQS et changeront.
+
+---
+
 ## Nouveautés 0.0.16
 
 ### KeyPairResult — paire de clés enrichie
@@ -671,6 +787,27 @@ cert_pem = createSignedCertFromBytes(..., extra_extensions=custom_profile)
 ---
 
 ## Changelog
+
+### 0.0.18 (2026-05-30)
+
+- **Module post-quantique `cheetahpki.pqc`.** Support des schémas de signature
+  PQC normalisés par le NIST : **ML-DSA** (FIPS 204 — ML-DSA-44/65/87),
+  **Falcon** (FN-DSA, FIPS 206 *draft* — Falcon-512/1024) et **SLH-DSA**
+  (FIPS 205 — variantes SHA2 et SHAKE). Stratégie en deux couches : backend
+  `liboqs` (production, tous les algorithmes) ou fallback Python natif
+  (ML-DSA-65 uniquement, RECHERCHE — interne-cohérent, non interopérable).
+- **`generateKeyPairPQC(algorithm, private_key_password=None)`** → `PQCKeyPairResult`
+  (clé publique SPKI PEM, clé privée PKCS#8 PEM ou conteneur chiffré
+  PBKDF2-SHA256 + AES-256-GCM).
+- **`createSignedCertPQC(...)`** : certificat X.509 (RFC 5280) signé par une CA
+  à clé PQC. Le TBSCertificate est encodé en DER par la bibliothèque (puisque
+  `cryptography` ne signe pas encore avec une clé PQC), puis signé via le
+  backend PQC. Extensions BasicConstraints, KeyUsage, EKU, SAN, SKI, AKI, AIA,
+  CRLDP. Mode CA intermédiaire (`is_ca`, `path_length`).
+- **Helpers** : `PQCSigner`, `list_pqc_algorithms()`, `resolve_pqc_algorithm()`,
+  `is_pqc_algorithm()`, `load_pqc_public_key_pem()`, `load_pqc_private_key_pem()`.
+- **Constantes** : `PQC_ALGORITHMS` (catalogue + métadonnées : OID, famille,
+  niveau NIST, FIPS), `SUPPORTED_PQC_ALGORITHMS`, `PQC_AVAILABLE`, `PQC_BACKEND`.
 
 ### 0.0.17 (2026-05-20)
 
