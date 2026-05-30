@@ -16,6 +16,7 @@ cheetahpki/generateKeyPair.py
 cheetahpki/getCertInfo.py
 cheetahpki/getCertificateInfo.py
 cheetahpki/parseCsr.py
+cheetahpki/pqc.py
 cheetahpki.egg-info/PKG-INFO
 cheetahpki.egg-info/SOURCES.txt
 cheetahpki.egg-info/dependency_links.txt
