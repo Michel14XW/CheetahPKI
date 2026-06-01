@@ -58,8 +58,24 @@ from .generateCRL import generateCRL, CRLRevocationEntry
 from .checkOCSP import checkOCSPStatus
 from .extensions import DEFAULT_EXTENSIONS_BY_PROFILE
 from .exceptions import OCSPCheckError  # ré-export explicite (ajout 0.0.16)
+from .pqc import (
+    PQC_ALGORITHMS,
+    PQC_AVAILABLE,
+    PQC_BACKEND,
+    PQCSigner,
+    PQCError,
+    PQCKeyPairResult,
+    generateKeyPairPQC,
+    createSignedCertPQC,
+    createSignedCertHybrid,
+    list_pqc_algorithms,
+    resolve_pqc_algorithm,
+    is_pqc_algorithm,
+    load_pqc_public_key_pem,
+    load_pqc_private_key_pem,
+)
 
-__version__ = "0.0.17"
+__version__ = "0.0.19"
 VERSION = __version__.split(".")
 
 # ---------------------------------------------------------------------------
@@ -69,6 +85,10 @@ VERSION = __version__.split(".")
 SUPPORTED_ALGORITHMS = ("RSA", "EC", "Ed25519", "Ed448")
 SUPPORTED_CURVES = ("P-256", "P-384", "P-521")   # uniquement pour algorithm="EC"
 SUPPORTED_SIGNATURE_HASHES = ("sha256", "sha384", "sha512")  # 0.0.15 — paramètre signature_hash des createSigned*
+
+# Algorithmes post-quantiques (0.0.18). Noms canoniques des schémas de signature
+# exposés par le module `pqc`. Détail/métadonnées dans `PQC_ALGORITHMS`.
+SUPPORTED_PQC_ALGORITHMS = tuple(PQC_ALGORITHMS.keys())
 
 # Raisons de révocation supportées (RFC 5280 §5.3.1). Exposées pour que les
 # applications Django puissent les utiliser comme choix dans leurs modèles.
@@ -95,6 +115,7 @@ __all__ = (
     'SUPPORTED_CURVES',
     'SUPPORTED_REVOCATION_REASONS',
     'SUPPORTED_SIGNATURE_HASHES',
+    'SUPPORTED_PQC_ALGORITHMS',
     # Création de certificats — variantes filesystem
     'createSelfSignedRootCert',
     'createSignedCert',
@@ -148,4 +169,19 @@ __all__ = (
     'DirectoryCreationError',
     'UnsupportedAlgorithmError',
     'OCSPCheckError',                  # nouveau 0.0.16
+    # Post-quantique (nouveau 0.0.18)
+    'PQC_ALGORITHMS',
+    'PQC_AVAILABLE',
+    'PQC_BACKEND',
+    'PQCSigner',
+    'PQCError',
+    'PQCKeyPairResult',
+    'generateKeyPairPQC',
+    'createSignedCertPQC',
+    'createSignedCertHybrid',
+    'list_pqc_algorithms',
+    'resolve_pqc_algorithm',
+    'is_pqc_algorithm',
+    'load_pqc_public_key_pem',
+    'load_pqc_private_key_pem',
 )
