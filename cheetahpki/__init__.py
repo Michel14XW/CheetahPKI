@@ -67,6 +67,7 @@ from .pqc import (
     PQCKeyPairResult,
     generateKeyPairPQC,
     createSignedCertPQC,
+    createSignedCertHybrid,
     list_pqc_algorithms,
     resolve_pqc_algorithm,
     is_pqc_algorithm,
@@ -74,7 +75,7 @@ from .pqc import (
     load_pqc_private_key_pem,
 )
 
-__version__ = "0.0.18"
+__version__ = "0.0.19"
 VERSION = __version__.split(".")
 
 # ---------------------------------------------------------------------------
@@ -177,6 +178,7 @@ __all__ = (
     'PQCKeyPairResult',
     'generateKeyPairPQC',
     'createSignedCertPQC',
+    'createSignedCertHybrid',
     'list_pqc_algorithms',
     'resolve_pqc_algorithm',
     'is_pqc_algorithm',

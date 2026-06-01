@@ -788,6 +788,17 @@ cert_pem = createSignedCertFromBytes(..., extra_extensions=custom_profile)
 
 ## Changelog
 
+### 0.0.19 (2026-05-31)
+
+- **`createSignedCertHybrid(...)`** : émet un certificat X.509 dont le **sujet**
+  porte une clé post-quantique (ML-DSA / Falcon / SLH-DSA), signé par une CA dont
+  la clé peut être **classique** (RSA / EC / Ed25519 / Ed448) **ou** PQC. Le TBS
+  est encodé en DER (car `cryptography` refuse une clé sujet PQC dans
+  `CertificateBuilder`) puis signé avec la clé de la CA ; l'algorithme de
+  signature suit la CA, la clé du sujet reste indépendante (RFC 5280). `issuer`
+  et AuthorityKeyIdentifier dérivés de `ca_cert_pem`. Cas d'usage : une CA
+  intermédiaire classique signe une feuille post-quantique. Rétro-compatible 0.0.18.
+
 ### 0.0.18 (2026-05-30)
 
 - **Module post-quantique `cheetahpki.pqc`.** Support des schémas de signature
