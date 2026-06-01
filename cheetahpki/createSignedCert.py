@@ -1,7 +1,6 @@
 import os
-import ipaddress
 from cryptography import x509
-from cryptography.x509.oid import NameOID, AuthorityInformationAccessOID
+from cryptography.x509.oid import AuthorityInformationAccessOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
@@ -9,7 +8,6 @@ from cryptography.hazmat.primitives.asymmetric.ec import EllipticCurvePublicKey
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PrivateKey
 import datetime
-import re
 
 from .exceptions import (
     PublicKeyFileNotFoundError,
@@ -19,6 +17,7 @@ from .exceptions import (
     CertificateLoadError,
     CertificateSaveError,
 )
+from ._name import is_valid_email, build_subject_name, build_san_general_names
 
 
 _HASH_ALIASES = {
@@ -73,10 +72,6 @@ def _end_entity_key_usage(public_key):
         )
 
 
-def is_valid_email(email):
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
-
-
 def createSignedCertFromBytes(
     public_key_pem: bytes,
     pseudo: str,
@@ -111,7 +106,8 @@ def createSignedCertFromBytes(
     """
     if not pseudo or not company:
         raise ValueError("Les champs 'pseudo' et 'company' sont obligatoires.")
-    if not is_valid_email(email):
+    # L'e-mail est optionnel (0.0.20) : on ne le valide que s'il est fourni.
+    if email and not is_valid_email(email):
         raise ValueError("Adresse email invalide.")
     if valid_days <= 0:
         raise ValueError("La durée de validité doit être positive.")
@@ -134,15 +130,10 @@ def createSignedCertFromBytes(
     except Exception as e:
         raise PrivateKeyLoadError(f"Erreur lors du chargement de la clé privée de la CA : {e}")
 
-    subject = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, country_code),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, region),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, city),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, company),
-        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, department),
-        x509.NameAttribute(NameOID.COMMON_NAME, pseudo),
-        x509.NameAttribute(NameOID.EMAIL_ADDRESS, email),
-    ])
+    subject = build_subject_name(
+        country_code=country_code, region=region, city=city,
+        company=company, department=department, common_name=pseudo,
+    )
 
     valid_from = datetime.datetime.now(datetime.UTC)
     valid_to = valid_from + datetime.timedelta(days=valid_days)
@@ -154,14 +145,15 @@ def createSignedCertFromBytes(
             x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
             x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH,
         ]), False),
-        (x509.SubjectAlternativeName(
-            [x509.RFC822Name(email)]
-            + [x509.DNSName(name) for name in alt_names or []]
-            + [x509.IPAddress(ipaddress.ip_address(ip)) for ip in ip_addresses or []]
-        ), False),
         (x509.SubjectKeyIdentifier.from_public_key(public_key), False),
         (x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_private_key.public_key()), False),
     ]
+
+    # SAN — uniquement si au moins un GeneralName (cryptography refuse un SAN
+    # vide). L'e-mail n'y figure que s'il a été fourni.
+    san_names = build_san_general_names(email, alt_names, ip_addresses)
+    if san_names:
+        extensions.append((x509.SubjectAlternativeName(san_names), False))
 
     aia_descriptions = []
     if ocsp_url:

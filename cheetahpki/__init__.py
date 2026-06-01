@@ -75,7 +75,7 @@ from .pqc import (
     load_pqc_private_key_pem,
 )
 
-__version__ = "0.0.19"
+__version__ = "0.0.20"
 VERSION = __version__.split(".")
 
 # ---------------------------------------------------------------------------

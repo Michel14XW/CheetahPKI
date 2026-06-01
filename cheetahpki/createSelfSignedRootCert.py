@@ -1,19 +1,18 @@
 import os
 from cryptography import x509
-from cryptography.x509.oid import NameOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PrivateKey
 import datetime
 import uuid
-import re
 
 from .exceptions import (
     PrivateKeyFileNotFoundError,
     PrivateKeyLoadError,
     CertificateSaveError,
 )
+from ._name import is_valid_email, build_subject_name
 
 
 _HASH_ALIASES = {
@@ -49,14 +48,11 @@ def _signing_hash(private_key, signature_hash: str = None):
     return _resolve_hash(signature_hash)
 
 
-def is_valid_email(email):
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
-
-
 def _validate_root_inputs(pseudo, company, email, valid_days):
     if not pseudo or not company:
         raise ValueError("Les champs 'pseudo' et 'company' sont obligatoires.")
-    if not is_valid_email(email):
+    # L'e-mail est optionnel (0.0.20) : on ne le valide que s'il est fourni.
+    if email and not is_valid_email(email):
         raise ValueError("Adresse email invalide.")
     if valid_days <= 0:
         raise ValueError("La durée de validité doit être positive.")
@@ -96,14 +92,10 @@ def createSelfSignedRootCertFromBytes(
     except (ValueError, TypeError) as e:
         raise PrivateKeyLoadError(f"Échec du chargement de la clé privée : {e}")
 
-    subject = issuer = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, country_code),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, region),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, city),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, company),
-        x509.NameAttribute(NameOID.COMMON_NAME, pseudo),
-        x509.NameAttribute(NameOID.EMAIL_ADDRESS, email),
-    ])
+    subject = issuer = build_subject_name(
+        country_code=country_code, region=region, city=city,
+        company=company, common_name=pseudo,
+    )
 
     valid_from = datetime.datetime.now(datetime.UTC)
     valid_to = valid_from + datetime.timedelta(days=valid_days)
