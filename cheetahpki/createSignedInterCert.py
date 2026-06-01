@@ -1,13 +1,11 @@
 import os
-import ipaddress
 from cryptography import x509
-from cryptography.x509.oid import NameOID, AuthorityInformationAccessOID
+from cryptography.x509.oid import AuthorityInformationAccessOID
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.ed448 import Ed448PrivateKey
 import datetime
-import re
 
 from .exceptions import (
     PublicKeyFileNotFoundError,
@@ -17,6 +15,7 @@ from .exceptions import (
     CertificateLoadError,
     CertificateSaveError,
 )
+from ._name import is_valid_email, build_subject_name, build_san_general_names
 
 
 _HASH_ALIASES = {
@@ -45,10 +44,6 @@ def _signing_hash(private_key, signature_hash: str = None):
     if isinstance(private_key, (Ed25519PrivateKey, Ed448PrivateKey)):
         return None
     return _resolve_hash(signature_hash)
-
-
-def is_valid_email(email):
-    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 
 
 def createSignedInterCertFromBytes(
@@ -85,7 +80,8 @@ def createSignedInterCertFromBytes(
     """
     if not pseudo or not company:
         raise ValueError("Les champs 'pseudo' et 'company' sont obligatoires.")
-    if not is_valid_email(email):
+    # L'e-mail est optionnel (0.0.20) : on ne le valide que s'il est fourni.
+    if email and not is_valid_email(email):
         raise ValueError("Adresse email invalide.")
     if valid_days <= 0:
         raise ValueError("La durée de validité doit être positive.")
@@ -108,15 +104,10 @@ def createSignedInterCertFromBytes(
     except Exception as e:
         raise PrivateKeyLoadError(f"Erreur lors du chargement de la clé privée de la CA : {e}")
 
-    subject = x509.Name([
-        x509.NameAttribute(NameOID.COUNTRY_NAME, country_code),
-        x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, region),
-        x509.NameAttribute(NameOID.LOCALITY_NAME, city),
-        x509.NameAttribute(NameOID.ORGANIZATION_NAME, company),
-        x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, department),
-        x509.NameAttribute(NameOID.COMMON_NAME, pseudo),
-        x509.NameAttribute(NameOID.EMAIL_ADDRESS, email),
-    ])
+    subject = build_subject_name(
+        country_code=country_code, region=region, city=city,
+        company=company, department=department, common_name=pseudo,
+    )
 
     valid_from = datetime.datetime.now(datetime.UTC)
     valid_to = valid_from + datetime.timedelta(days=valid_days)
@@ -133,14 +124,14 @@ def createSignedInterCertFromBytes(
             x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
             x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH,
         ]),
-        x509.SubjectAlternativeName(
-            [x509.RFC822Name(email)]
-            + [x509.DNSName(name) for name in alt_names or []]
-            + [x509.IPAddress(ipaddress.ip_address(ip)) for ip in ip_addresses or []]
-        ),
         x509.SubjectKeyIdentifier.from_public_key(public_key),
         x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_private_key.public_key()),
     ]
+
+    # SAN — posé uniquement s'il contient au moins un GeneralName.
+    san_names = build_san_general_names(email, alt_names, ip_addresses)
+    if san_names:
+        extensions.append(x509.SubjectAlternativeName(san_names))
 
     aia_descriptions = []
     if ocsp_url:

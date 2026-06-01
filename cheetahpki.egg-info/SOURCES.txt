@@ -2,6 +2,7 @@ LICENCE
 README.md
 setup.py
 cheetahpki/__init__.py
+cheetahpki/_name.py
 cheetahpki/checkCertValidity.py
 cheetahpki/checkOCSP.py
 cheetahpki/createSelfSignedRootCert.py

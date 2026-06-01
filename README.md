@@ -1,6 +1,6 @@
 # CheetahPKI
 
-**Version** : 0.0.17
+**Version** : 0.0.20
 **Auteur** : Michel KPEKPASSI | [GitHub](https://github.com/Michel14XW/cheetahpki)
 **Licence** : MIT | Python ≥ 3.11
 
@@ -8,6 +8,15 @@ CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des 
 
 Conçue pour être utilisée en backend Django (projet vXtend-PKI v3) mais utilisable dans tout projet Python.
 
+> **Nouveau en 0.0.20** — Normalisation du sujet (DN) et du SubjectAltName,
+> alignée RFC 5280 :
+> - **E-mail optionnel** — un `email=""` est accepté (validé seulement s'il est fourni).
+> - **E-mail hors DN** — `emailAddress` n'est plus dans le sujet (déprécié RFC 5280 §4.1.2.6) ; s'il est fourni, il va dans le SAN `rfc822Name`.
+> - **Plus de RDN vides** — `ST`/`L`/`OU` vides ne sont plus émis ; le pays `C` n'est inclus que s'il fait 2 lettres (normalisé en majuscules) au lieu de planter.
+> - **SAN conditionnel** — l'extension n'est posée que si elle contient au moins un nom.
+>
+> Aucune signature publique ne change. Détails : voir [Changelog 0.0.20](#0020-2026-06-01).
+>
 > **Nouveau en 0.0.17** — `generateCsr()` accepte désormais des clés Ed25519 et Ed448.
 > Un helper interne `_hash_for_key()` détermine l'algorithme de hash de signature selon le type de clé : `None` pour Ed25519 / Ed448 (hash intégré au schéma de signature, exigé par `cryptography`), `SHA-256` pour RSA / ECDSA (comportement historique préservé). Corrige le `ValueError: "Algorithm must be None when signing via ed25519 or ed448"` rencontré lors de la génération d'une CSR avec une clé Edwards. Rétrocompatibilité totale — aucun changement de signature.
 >
@@ -787,6 +796,32 @@ cert_pem = createSignedCertFromBytes(..., extra_extensions=custom_profile)
 ---
 
 ## Changelog
+
+### 0.0.20 (2026-06-01)
+
+Normalisation du **sujet (DN)** et du **SubjectAltName** — alignement RFC 5280,
+corrige des défauts communs aux trois émetteurs (`createSignedCert`,
+`createSignedInterCert`, `createSelfSignedRootCert`) **et** au moteur DER PQC.
+
+- **L'e-mail devient optionnel.** Un `email=""` (ou absent) est désormais
+  accepté ; il n'est validé que s'il est fourni. Auparavant tout émetteur levait
+  `ValueError: Adresse email invalide` sur un e-mail vide.
+- **L'e-mail quitte le DN.** L'attribut `emailAddress` (`1.2.840.113549.1.9.1`)
+  n'est plus placé dans le sujet — il est **déprécié par la RFC 5280 §4.1.2.6**.
+  Lorsqu'un e-mail est fourni, il figure uniquement dans le **SAN `rfc822Name`**.
+- **Plus de RDN vides dans le DN.** Les composants vides (`ST`, `L`, `OU`, …) ne
+  sont plus émis : fini les sujets du type `…,L=,ST=,C=TG`. Le pays (`C`) n'est
+  inclus que s'il fait **exactement 2 lettres** (sinon omis au lieu de planter
+  avec « Attribute's length must be >= 2 and <= 2, but it was 0 ») et est
+  normalisé en majuscules.
+- **SAN posé seulement s'il est non vide.** Sans e-mail ni `alt_names`/
+  `ip_addresses`, l'extension SAN n'est plus ajoutée (un SAN vide est invalide).
+- Nouveau module interne `cheetahpki/_name.py` : `build_subject_name(...)`,
+  `build_san_general_names(...)` (et `is_valid_email`), partagé par les émetteurs.
+
+> **Impact** : le DN des certificats nouvellement émis change (e-mail retiré,
+> champs vides supprimés). Les certificats déjà émis ne sont pas affectés.
+> Aucune signature de fonction publique ne change. Rétro-compatible 0.0.19.
 
 ### 0.0.19 (2026-05-31)
 

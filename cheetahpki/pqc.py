@@ -761,19 +761,26 @@ def is_valid_email(email: str) -> bool:
 
 
 def _name_der(fields: dict) -> bytes:
-    """Encode un X.501 Name (RDNSequence) depuis un dict de composants."""
+    """Encode un X.501 Name (RDNSequence) depuis un dict de composants.
+
+    L'e-mail n'est volontairement PAS encodé dans le DN (déprécié RFC 5280
+    §4.1.2.6 — il appartient au SubjectAltName `rfc822Name`). Les composants
+    vides sont ignorés. Le pays n'est inclus que s'il fait 2 caractères.
+    """
     rdns = []
     order = ["country_code", "region", "city", "company", "department",
-             "common_name", "email"]
+             "common_name"]
     for key in order:
         value = fields.get(key)
         if not value:
             continue
+        if key == "country_code":
+            value = str(value).strip().upper()
+            if len(value) != 2:
+                continue
         oid = _RDN_OIDS[key]
         if key == "country_code":
             val = _der_printable(value)
-        elif key == "email":
-            val = _der_ia5(value)
         else:
             val = _der_utf8(value)
         rdns.append(_der_set(_der_seq(_der_oid(oid), val)))
@@ -1025,7 +1032,8 @@ def createSignedCertHybrid(
     """
     if not pseudo or not company:
         raise ValueError("Les champs 'pseudo' et 'company' sont obligatoires.")
-    if not is_valid_email(email):
+    # L'e-mail est optionnel (0.0.20) : validé seulement s'il est fourni.
+    if email and not is_valid_email(email):
         raise ValueError("Adresse email invalide.")
     if valid_days <= 0:
         raise ValueError("La durée de validité doit être positive.")
@@ -1140,7 +1148,8 @@ def createSignedCertPQC(
     """
     if not pseudo or not company:
         raise ValueError("Les champs 'pseudo' et 'company' sont obligatoires.")
-    if not is_valid_email(email):
+    # L'e-mail est optionnel (0.0.20) : validé seulement s'il est fourni.
+    if email and not is_valid_email(email):
         raise ValueError("Adresse email invalide.")
     if valid_days <= 0:
         raise ValueError("La durée de validité doit être positive.")
