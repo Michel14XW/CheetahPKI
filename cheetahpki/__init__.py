@@ -55,6 +55,7 @@ from .createSignedInterCert import createSignedInterCert, createSignedInterCertF
 from .generateCsr import generateCsr
 from .parseCsr import parseCsr
 from .generateCRL import generateCRL, CRLRevocationEntry
+from .revokeCert import revokeCert
 from .checkOCSP import checkOCSPStatus
 from .extensions import DEFAULT_EXTENSIONS_BY_PROFILE
 from .exceptions import OCSPCheckError  # ré-export explicite (ajout 0.0.16)
@@ -75,7 +76,7 @@ from .pqc import (
     load_pqc_private_key_pem,
 )
 
-__version__ = "0.0.20"
+__version__ = "0.0.21"
 VERSION = __version__.split(".")
 
 # ---------------------------------------------------------------------------
@@ -146,6 +147,7 @@ __all__ = (
     # CRL
     'generateCRL',
     'CRLRevocationEntry',
+    'revokeCert',                      # nouveau 0.0.21 — wrapper révocation + re-signature CRL
     # OCSP (nouveau 0.0.16)
     'checkOCSPStatus',
     # Templates d'extensions (nouveau 0.0.16)

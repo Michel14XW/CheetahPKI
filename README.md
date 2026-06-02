@@ -1,13 +1,20 @@
 # CheetahPKI
 
-**Version** : 0.0.20
+**Version** : 0.0.21
 **Auteur** : Michel KPEKPASSI | [GitHub](https://github.com/Michel14XW/cheetahpki)
 **Licence** : MIT | Python ≥ 3.11
 
-CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des paires de clés, créer et signer des certificats X.509, publier des CRL, vérifier la révocation via OCSP, extraire les métadonnées d'un certificat, calculer des empreintes et analyser des CSR.
+CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des paires de clés, créer et signer des certificats X.509, publier des CRL, révoquer des certificats, vérifier la révocation via OCSP, extraire les métadonnées d'un certificat, calculer des empreintes et analyser des CSR.
 
 Conçue pour être utilisée en backend Django (projet vXtend-PKI v3) mais utilisable dans tout projet Python.
 
+> **Nouveau en 0.0.21** — Révocation de haut niveau `revokeCert()` : charge la CRL
+> courante (PEM/DER auto-détecté), reconstruit ses entrées (serial + date + raison),
+> ajoute le certificat à révoquer (idempotent, sans doublon) puis re-signe une CRL
+> complète via `generateCRL`. Pratique pour le scripting / les tests d'intégration où
+> l'on ne maintient pas soi-même la liste cumulée des révocations. Rétro-compatible
+> 0.0.20. Détails : voir [Changelog 0.0.21](#0021-2026-06-02).
+>
 > **Nouveau en 0.0.20** — Normalisation du sujet (DN) et du SubjectAltName,
 > alignée RFC 5280 :
 > - **E-mail optionnel** — un `email=""` est accepté (validé seulement s'il est fourni).
@@ -48,6 +55,7 @@ Conçue pour être utilisée en backend Django (projet vXtend-PKI v3) mais utili
   - [5. Vérification de validité](#5-vérification-de-validité--checkcertvalidity)
   - [6. Informations sur un certificat](#6-informations-sur-un-certificat)
   - [7. Publication de CRL](#7-publication-de-crl--generatecrl-0013)
+  - [7b. Révocation d'un certificat](#7b-révocation-dun-certificat--revokecert-0021)
   - [8. Empreintes (fingerprints)](#8-empreintes-fingerprints)
   - [9. Génération et analyse de CSR](#9-génération-et-analyse-de-csr)
 - [API bytes (0.0.14)](#api-bytes-0014)
@@ -122,9 +130,9 @@ from cheetahpki import SUPPORTED_PQC_ALGORITHMS, PQC_ALGORITHMS, PQC_BACKEND
 pip install git+https://github.com/Michel14XW/cheetahpki.git
 
 # Depuis une archive locale
-pip install dist/cheetahpki-0.0.18.tar.gz
+pip install dist/cheetahpki-0.0.21.tar.gz
 # ou en wheel
-pip install dist/cheetahpki-0.0.18-py3-none-any.whl
+pip install dist/cheetahpki-0.0.21-py3-none-any.whl
 
 # En mode éditable (dev local)
 pip install -e .
@@ -146,6 +154,7 @@ cheetahpki/
 ├── generateCsr.py              ← génération de CSR à partir d'une clé privée
 ├── parseCsr.py                 ← analyse d'un fichier CSR existant
 ├── generateCRL.py              ← CRL RFC 5280 (nouveau 0.0.13)
+├── revokeCert.py               ← wrapper révocation : CRL existante + entrée + re-signature (nouveau 0.0.21)
 ├── checkCertValidity.py        ← jours restants avant expiration
 ├── checkOCSP.py                ← client OCSP RFC 6960 (nouveau 0.0.16)
 ├── getCertInfo.py              ← helpers unitaires (CN, serial, dates)
@@ -426,6 +435,57 @@ SUPPORTED_REVOCATION_REASONS = (
 - `crl_number` doit être **strictement croissant** pour chaque CA — ne jamais réutiliser un numéro déjà émis.
 - La CRL liste **tous les certificats révoqués actifs**, pas seulement les nouveaux. Reconstruire la liste complète à chaque publication.
 - Les certificats expirés **peuvent** être retirés de la CRL après leur expiration (optimisation de taille).
+
+---
+
+### 7b. Révocation d'un certificat — `revokeCert` (0.0.21)
+
+`generateCRL` exige la liste **complète** des certificats révoqués. `revokeCert`
+automatise le cycle courant : il charge la CRL existante, en extrait les entrées
+déjà publiées, ajoute le certificat à révoquer, puis re-signe une CRL complète.
+Idéal pour le scripting et les tests d'intégration où l'on ne maintient pas
+soi-même la liste cumulée (côté Django, c'est `CRLService` qui joue ce rôle en
+s'appuyant sur la base de données).
+
+```python
+from cheetahpki import revokeCert
+
+# 1er appel — aucune CRL existante : la CRL ne contient que cette entrée.
+crl_pem_path, crl_der_bytes = revokeCert(
+    ca_cert_path="tmp/certs/inter_ca.pem",
+    ca_private_key_path="tmp/keys/inter_private_key.pem",
+    serial_number=0x1A2B3C,         # int décimal du certificat à révoquer
+    crl_number=1,                   # strictement > crl_number précédent
+    existing_crl_path=None,         # None = première CRL
+    reason="unspecified",
+    ca_key_password=None,
+    output_folder="tmp/crl",
+    output_filename="inter_ca_crl",
+)
+
+# Appels suivants — on étend la CRL courante : l'entrée s'ajoute aux précédentes.
+crl_pem_path, crl_der_bytes = revokeCert(
+    ca_cert_path="tmp/certs/inter_ca.pem",
+    ca_private_key_path="tmp/keys/inter_private_key.pem",
+    serial_number=0x4D5E6F,
+    crl_number=2,
+    existing_crl_path="tmp/crl/inter_ca_crl.pem",   # CRL à étendre
+    reason="key_compromise",
+    output_folder="tmp/crl",
+    output_filename="inter_ca_crl",
+)
+
+# crl_pem_path  : str   — chemin du fichier CRL PEM réécrit
+# crl_der_bytes : bytes — contenu DER, prêt pour la diffusion HTTP
+```
+
+**Comportement :**
+- Le format de `existing_crl_path` (PEM ou DER) est **auto-détecté**.
+- Si `serial_number` figure **déjà** dans la CRL, son entrée d'origine est
+  conservée (date/raison initiales) — **aucun doublon** n'est créé. Une révocation
+  est définitive en RFC 5280 (sauf `remove_from_crl`).
+- Paramètres `reason` / `next_update_days` / `ca_key_password` identiques à
+  `generateCRL` ; `revocation_date` par défaut = maintenant (UTC).
 
 ---
 
@@ -796,6 +856,18 @@ cert_pem = createSignedCertFromBytes(..., extra_extensions=custom_profile)
 ---
 
 ## Changelog
+
+### 0.0.21 (2026-06-02)
+
+- **Nouveau : `revokeCert()`** — wrapper de révocation de haut niveau au-dessus
+  de `generateCRL`. Charge la CRL courante (PEM/DER auto-détecté), reconstruit ses
+  entrées (serial + `revocation_date` UTC + raison lue dans l'extension `CRLReason`),
+  ajoute le certificat à révoquer — **idempotent** : un serial déjà présent n'est
+  pas dupliqué et conserve sa date/raison d'origine — puis re-signe une CRL complète
+  avec un `crl_number` incrémenté. Voir [7b. Révocation d'un certificat](#7b-révocation-dun-certificat--revokecert-0021).
+- Exporté depuis le package : `from cheetahpki import revokeCert`. Nouveau module
+  `cheetahpki/revokeCert.py`.
+- Rétro-compatible 0.0.20 — aucune signature publique existante ne change.
 
 ### 0.0.20 (2026-06-01)
 
