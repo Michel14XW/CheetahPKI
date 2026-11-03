@@ -1,0 +1,5 @@
+# Développement / tests : pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8
+# Optionnel — backend post-quantique de production (nécessite la lib C liboqs) :
+# liboqs-python>=0.14

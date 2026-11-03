@@ -1,6 +1,6 @@
 # CheetahPKI
 
-**Version** : 0.0.22
+**Version** : 0.0.23
 **Auteur** : Michel KPEKPASSI | [GitHub](https://github.com/Michel14XW/cheetahpki)
 **Licence** : MIT | Python ≥ 3.11
 
@@ -8,6 +8,11 @@ CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des 
 
 Conçue pour être utilisée en backend Django (projet vXtend-PKI v3) mais utilisable dans tout projet Python.
 
+> **Nouveau en 0.0.23** — Dépendances assainies : `djangorestframework` (inutilisé) retiré,
+> plancher de sécurité `cryptography>=50.0.0`, extras `[pqc]` (liboqs-python) et `[test]`,
+> fichiers `requirements.txt` / `requirements-dev.txt`. Aucun changement d'API.
+> Détails : voir [Changelog 0.0.23](#0023-2026-11-03).
+>
 > **Nouveau en 0.0.22** — Profils de certificat réglables (interopérabilité **X-Road**) :
 > - **`key_usage`**, **`extended_key_usage`** et **`subject`** sur `createSignedCertFromBytes`,
 >   `createSignedCert` et `createSignedCertHybrid` (optionnels, rétrocompatibles).
@@ -136,15 +141,28 @@ from cheetahpki import SUPPORTED_PQC_ALGORITHMS, PQC_ALGORITHMS, PQC_BACKEND
 pip install git+https://github.com/Michel14XW/cheetahpki.git
 
 # Depuis une archive locale
-pip install dist/cheetahpki-0.0.18.tar.gz
+pip install dist/cheetahpki-0.0.23.tar.gz
 # ou en wheel
-pip install dist/cheetahpki-0.0.18-py3-none-any.whl
+pip install dist/cheetahpki-0.0.23-py3-none-any.whl
 
-# En mode éditable (dev local)
-pip install -e .
+# Avec le backend post-quantique de production (liboqs-python ; la bibliothèque
+# C liboqs doit être installée, cf. OQS_INSTALL_PATH)
+pip install "cheetahpki[pqc]"
+
+# En mode éditable (dev local) + outils de test
+pip install -e ".[test]"        # ou : pip install -r requirements-dev.txt
+python -m pytest tests/
 ```
 
----
+**Dépendances** (0.0.23) :
+
+| Type | Paquet | Rôle |
+|------|--------|------|
+| obligatoire | `cryptography>=50.0.0` | Tout le moteur X.509 / clés / CRL / OCSP. Plancher de sécurité : les versions antérieures ont des vulnérabilités connues (pip-audit). |
+| optionnel `[pqc]` | `liboqs-python>=0.14` | Backend PQC de production (ML-DSA, Falcon, SLH-DSA). Sans lui : fallback Python natif ML-DSA-65 (R&D). |
+| optionnel `[test]` | `pytest>=8` | Suite `tests/`. |
+
+Le client OCSP (`checkOCSPStatus`) n'utilise que la bibliothèque standard (`urllib`).
 
 ## Arborescence
 
@@ -858,6 +876,20 @@ cert_pem = createSignedCertFromBytes(..., extra_extensions=custom_profile)
 ---
 
 ## Changelog
+
+### 0.0.23 (2026-11-03)
+
+Assainissement des dépendances — aucun changement d'API ni de comportement.
+
+- **`djangorestframework` retiré de `install_requires`** : il n'est importé nulle
+  part dans le paquet, mais tirait Django chez tout utilisateur de la bibliothèque.
+- **Plancher de sécurité `cryptography>=50.0.0`** (au lieu de `>=43.0.3`) : toutes
+  les versions antérieures portent des avis connus (PYSEC-2026-1284/2141/35/3552/
+  3553/3554, GHSA-537c-gmf6-5ccf). Suite de tests verte avec 50.0.0 et 50.0.2.
+- **Extras** : `[pqc]` → `liboqs-python>=0.14` (le module `oqs` importé par `pqc`
+  n'était déclaré nulle part) ; `[test]` → `pytest>=8`.
+- **Nouveaux fichiers** `requirements.txt` et `requirements-dev.txt`.
+- Classifiers Python 3.12 / 3.13 ajoutés (déjà supportés).
 
 ### 0.0.22 (2026-11-03)
 
