@@ -18,6 +18,7 @@ from .exceptions import (
     CertificateSaveError,
 )
 from ._name import is_valid_email, build_subject_name, build_san_general_names
+from .extensions import merge_extensions, build_override_extensions
 
 
 _HASH_ALIASES = {
@@ -92,6 +93,9 @@ def createSignedCertFromBytes(
     crl_url: str = None,
     signature_hash: str = None,
     extra_extensions: list = None,
+    key_usage: x509.KeyUsage = None,
+    extended_key_usage: list = None,
+    subject: x509.Name = None,
 ) -> bytes:
     """
     Crée un certificat utilisateur signé par une CA intermédiaire et renvoie
@@ -102,9 +106,28 @@ def createSignedCertFromBytes(
         avant la signature, fournies typiquement par un `CertificateTemplate`
         côté Django (Extended Key Usage applicatif, Certificate Policies, etc.).
         Chaque élément peut être soit un `x509.ExtensionType`, soit un tuple
-        `(extension, critical: bool)`.
+        `(extension, critical: bool)`. Depuis 0.0.22, une extension dont l'OID
+        est déjà posé par défaut (KeyUsage, EKU, SAN, AIA…) **remplace** celle
+        par défaut au lieu de lever « This extension has already been set ».
+        Un ``x509.ExtendedKeyUsage([])`` retire l'EKU.
+
+    key_usage (x509.KeyUsage | None, cheetahpki >= 0.0.22) : KeyUsage posé
+        **critique** à la place de celui déduit du type de clé. ``None`` =
+        comportement 0.0.21.
+
+    extended_key_usage (list[ObjectIdentifier] | None, cheetahpki >= 0.0.22) :
+        EKU à poser à la place de ``serverAuth + clientAuth``. Une liste
+        **vide** = pas d'EKU du tout. ``None`` = comportement 0.0.21.
+
+    subject (x509.Name | None, cheetahpki >= 0.0.22) : DN utilisé **tel quel**
+        (typiquement ``csr.subject`` pour reprendre le sujet d'un PKCS#10 avec
+        ses attributs ``serialNumber``, un ``C`` non standard, etc.). Les
+        champs pseudo/company/department/city/region/country_code sont alors
+        ignorés pour le DN (pseudo/company deviennent facultatifs).
     """
-    if not pseudo or not company:
+    if subject is not None and not isinstance(subject, x509.Name):
+        raise TypeError("subject doit être un cryptography.x509.Name.")
+    if subject is None and (not pseudo or not company):
         raise ValueError("Les champs 'pseudo' et 'company' sont obligatoires.")
     # L'e-mail est optionnel (0.0.20) : on ne le valide que s'il est fourni.
     if email and not is_valid_email(email):
@@ -130,10 +153,11 @@ def createSignedCertFromBytes(
     except Exception as e:
         raise PrivateKeyLoadError(f"Erreur lors du chargement de la clé privée de la CA : {e}")
 
-    subject = build_subject_name(
-        country_code=country_code, region=region, city=city,
-        company=company, department=department, common_name=pseudo,
-    )
+    if subject is None:
+        subject = build_subject_name(
+            country_code=country_code, region=region, city=city,
+            company=company, department=department, common_name=pseudo,
+        )
 
     valid_from = datetime.datetime.now(datetime.UTC)
     valid_to = valid_from + datetime.timedelta(days=valid_days)
@@ -189,17 +213,16 @@ def createSignedCertFromBytes(
         .not_valid_before(valid_from)
         .not_valid_after(valid_to)
     )
-    for ext, critical in extensions:
+    # Surcharges (0.0.22) : extra_extensions (CertificateTemplate Django,
+    # >= 0.0.16) puis key_usage / extended_key_usage explicites. Fusion par OID :
+    # une surcharge remplace l'extension par défaut de même OID.
+    overrides = build_override_extensions(
+        key_usage=key_usage,
+        extended_key_usage=extended_key_usage,
+        extra_extensions=extra_extensions,
+    )
+    for ext, critical in merge_extensions(extensions, overrides):
         builder = builder.add_extension(ext, critical=critical)
-
-    # Extensions issues d'un CertificateTemplate (Django) — cheetahpki >= 0.0.16
-    if extra_extensions:
-        for item in extra_extensions:
-            if isinstance(item, tuple):
-                ext_obj, critical = item
-            else:
-                ext_obj, critical = item, False
-            builder = builder.add_extension(ext_obj, critical=critical)
 
     certificate = builder.sign(
         private_key=ca_private_key,
@@ -230,6 +253,9 @@ def createSignedCert(
     crl_url: str = None,
     signature_hash: str = None,
     extra_extensions: list = None,
+    key_usage: x509.KeyUsage = None,
+    extended_key_usage: list = None,
+    subject: x509.Name = None,
 ):
     """
     Variante filesystem : lit les PEM depuis des fichiers, écrit le certificat
@@ -285,6 +311,9 @@ def createSignedCert(
         crl_url=crl_url,
         signature_hash=signature_hash,
         extra_extensions=extra_extensions,
+        key_usage=key_usage,
+        extended_key_usage=extended_key_usage,
+        subject=subject,
     )
 
     output_filename = output_filename or f"{pseudo}_certificate.pem"

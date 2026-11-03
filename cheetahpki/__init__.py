@@ -55,8 +55,13 @@ from .createSignedInterCert import createSignedInterCert, createSignedInterCertF
 from .generateCsr import generateCsr
 from .parseCsr import parseCsr
 from .generateCRL import generateCRL, CRLRevocationEntry
+from .revokeCert import revokeCert
 from .checkOCSP import checkOCSPStatus
-from .extensions import DEFAULT_EXTENSIONS_BY_PROFILE
+from .extensions import (
+    DEFAULT_EXTENSIONS_BY_PROFILE,
+    certificate_profile_kwargs,
+    merge_extensions,
+)
 from .exceptions import OCSPCheckError  # ré-export explicite (ajout 0.0.16)
 from .pqc import (
     PQC_ALGORITHMS,
@@ -75,7 +80,7 @@ from .pqc import (
     load_pqc_private_key_pem,
 )
 
-__version__ = "0.0.20"
+__version__ = "0.0.22"
 VERSION = __version__.split(".")
 
 # ---------------------------------------------------------------------------
@@ -85,6 +90,9 @@ VERSION = __version__.split(".")
 SUPPORTED_ALGORITHMS = ("RSA", "EC", "Ed25519", "Ed448")
 SUPPORTED_CURVES = ("P-256", "P-384", "P-521")   # uniquement pour algorithm="EC"
 SUPPORTED_SIGNATURE_HASHES = ("sha256", "sha384", "sha512")  # 0.0.15 — paramètre signature_hash des createSigned*
+
+# Profils de certificat (0.0.22 : + xroad_sign, xroad_auth, ocsp_signing, timestamping).
+SUPPORTED_CERTIFICATE_PROFILES = tuple(DEFAULT_EXTENSIONS_BY_PROFILE.keys())
 
 # Algorithmes post-quantiques (0.0.18). Noms canoniques des schémas de signature
 # exposés par le module `pqc`. Détail/métadonnées dans `PQC_ALGORITHMS`.
@@ -116,6 +124,7 @@ __all__ = (
     'SUPPORTED_REVOCATION_REASONS',
     'SUPPORTED_SIGNATURE_HASHES',
     'SUPPORTED_PQC_ALGORITHMS',
+    'SUPPORTED_CERTIFICATE_PROFILES',  # nouveau 0.0.22
     # Création de certificats — variantes filesystem
     'createSelfSignedRootCert',
     'createSignedCert',
@@ -146,10 +155,13 @@ __all__ = (
     # CRL
     'generateCRL',
     'CRLRevocationEntry',
+    'revokeCert',                      # nouveau 0.0.21 — wrapper révocation + re-signature CRL
     # OCSP (nouveau 0.0.16)
     'checkOCSPStatus',
     # Templates d'extensions (nouveau 0.0.16)
     'DEFAULT_EXTENSIONS_BY_PROFILE',
+    'certificate_profile_kwargs',      # nouveau 0.0.22 — profil -> key_usage/extended_key_usage/extra_extensions
+    'merge_extensions',                # nouveau 0.0.22 — fusion par OID (remplacement des défauts)
     # Exceptions
     'CertificateError',
     'CertificateFileNotFoundError',
