@@ -858,6 +858,27 @@ def _ski_from_spki(spki_der: bytes) -> bytes:
     return hashlib.sha1(raw_pub).digest()
 
 
+def _ext_tuple(oid: str, critical: bool, value_der: bytes) -> tuple:
+    """Extension « à encoder » : (oid pointé, critique, valeur DER)."""
+    return (oid, critical, value_der)
+
+
+def _apply_der_overrides(extensions: list, overrides: list) -> list:
+    """Fusion par OID des surcharges `cryptography` dans la liste DER (0.0.22)."""
+    merged = list(extensions)
+    for ext, critical in overrides:
+        oid = ext.oid.dotted_string
+        removal = oid == "2.5.29.37" and len(list(ext)) == 0
+        value = None if removal else ext.public_bytes()
+        idx = next((i for i, (o, _c, _v) in enumerate(merged) if o == oid), None)
+        if idx is None:
+            merged.append((oid, bool(critical), value))
+        else:
+            merged[idx] = (oid, bool(critical), value)
+    # value None = extension retirée (EKU vide)
+    return [t for t in merged if t[2] is not None]
+
+
 def _subject_extensions_der(
     subject_spki: bytes,
     ca_ski: Optional[bytes],
@@ -870,10 +891,16 @@ def _subject_extensions_der(
     ocsp_url: Optional[str],
     ca_issuers_url: Optional[str],
     crl_url: Optional[str],
+    overrides: Optional[list] = None,
 ) -> bytes:
     """Construit le bloc Extensions ([3] EXPLICIT) commun aux certificats émis
     par le moteur DER (sujet PQC). Extensions RFC 5280 : BasicConstraints,
     KeyUsage, EKU (end-entity), SAN, SKI, AKI, AIA, CRLDP.
+
+    ``overrides`` (0.0.22) : liste ``[(x509.ExtensionType, critical)]`` fusionnée
+    **par OID** (remplacement, ou ajout si OID nouveau) ; un
+    ``x509.ExtendedKeyUsage([])`` retire l'EKU. Les valeurs sont encodées en DER
+    via ``ExtensionType.public_bytes()`` de `cryptography`.
     """
     extensions = []
 
@@ -885,32 +912,32 @@ def _subject_extensions_der(
         bc = _der_seq(bc_body)
     else:
         bc = _der_seq()  # cA = FALSE par défaut
-    extensions.append(_extension_der("2.5.29.19", True, bc))
+    extensions.append(_ext_tuple("2.5.29.19", True, bc))
 
     # KeyUsage (critique)
     if is_ca:
         ku = _key_usage_der(digital_signature=True, key_cert_sign=True, crl_sign=True)
     else:
         ku = _key_usage_der(digital_signature=True, key_encipherment=False)
-    extensions.append(_extension_der("2.5.29.15", True, ku))
+    extensions.append(_ext_tuple("2.5.29.15", True, ku))
 
     # ExtendedKeyUsage (serverAuth + clientAuth) — end-entity uniquement
     if not is_ca:
         eku = _der_seq(_der_oid("1.3.6.1.5.5.7.3.1"), _der_oid("1.3.6.1.5.5.7.3.2"))
-        extensions.append(_extension_der("2.5.29.37", False, eku))
+        extensions.append(_ext_tuple("2.5.29.37", False, eku))
 
     # SubjectAltName
     san = _san_der(email, alt_names, ip_addresses)
     if len(san) > 2:  # pas seulement un SEQUENCE vide
-        extensions.append(_extension_der("2.5.29.17", False, san))
+        extensions.append(_ext_tuple("2.5.29.17", False, san))
 
     # SubjectKeyIdentifier
-    extensions.append(_extension_der("2.5.29.14", False, _der_octet(_ski_from_spki(subject_spki))))
+    extensions.append(_ext_tuple("2.5.29.14", False, _der_octet(_ski_from_spki(subject_spki))))
 
     # AuthorityKeyIdentifier
     if ca_ski is not None:
         extensions.append(
-            _extension_der("2.5.29.35", False, _der_seq(_der_ctx(0, ca_ski, constructed=False)))
+            _ext_tuple("2.5.29.35", False, _der_seq(_der_ctx(0, ca_ski, constructed=False)))
         )
 
     # AuthorityInfoAccess (OCSP / CA Issuers)
@@ -922,16 +949,19 @@ def _subject_extensions_der(
         aia_items.append(_der_seq(_der_oid("1.3.6.1.5.5.7.48.2"),
                                   _der_ctx(6, ca_issuers_url.encode("ascii"), constructed=False)))
     if aia_items:
-        extensions.append(_extension_der("1.3.6.1.5.5.7.1.1", False, _der_seq(*aia_items)))
+        extensions.append(_ext_tuple("1.3.6.1.5.5.7.1.1", False, _der_seq(*aia_items)))
 
     # CRLDistributionPoints
     if crl_url:
         gn = _der_ctx(6, crl_url.encode("ascii"), constructed=False)
         full_name = _der_ctx(0, gn)
         dist_point = _der_ctx(0, full_name)
-        extensions.append(_extension_der("2.5.29.31", False, _der_seq(_der_seq(dist_point))))
+        extensions.append(_ext_tuple("2.5.29.31", False, _der_seq(_der_seq(dist_point))))
 
-    return _der_ctx(3, _der_seq(*extensions))
+    if overrides:
+        extensions = _apply_der_overrides(extensions, overrides)
+
+    return _der_ctx(3, _der_seq(*(_extension_der(o, c, v) for o, c, v in extensions)))
 
 
 # OID des algorithmes de signature classiques (RFC 5280 §A.2, RFC 8410).
@@ -1016,6 +1046,10 @@ def createSignedCertHybrid(
     is_ca: bool = False,
     path_length: Optional[int] = None,
     serial_number: Optional[int] = None,
+    extra_extensions: Optional[list] = None,
+    key_usage=None,
+    extended_key_usage: Optional[list] = None,
+    subject=None,
 ) -> bytes:
     """Émet un certificat X.509 dont le **sujet** porte une clé post-quantique
     (ML-DSA / Falcon / SLH-DSA), signé par une CA dont la clé peut être
@@ -1029,8 +1063,17 @@ def createSignedCertHybrid(
 
     Pour un sujet classique signé par une CA classique, utiliser plutôt
     `createSignedCertFromBytes` (chemin cryptography natif).
+
+    Paramètres 0.0.22 (mêmes sémantiques que `createSignedCertFromBytes`) :
+    ``key_usage`` (``x509.KeyUsage``, critique), ``extended_key_usage`` (liste
+    d'OID ; ``[]`` = pas d'EKU), ``extra_extensions`` (fusion par OID) et
+    ``subject`` (``x509.Name`` repris tel quel, ex. ``csr.subject``).
     """
-    if not pseudo or not company:
+    from cryptography import x509
+
+    if subject is not None and not isinstance(subject, x509.Name):
+        raise TypeError("subject doit être un cryptography.x509.Name.")
+    if subject is None and (not pseudo or not company):
         raise ValueError("Les champs 'pseudo' et 'company' sont obligatoires.")
     # L'e-mail est optionnel (0.0.20) : validé seulement s'il est fourni.
     if email and not is_valid_email(email):
@@ -1038,7 +1081,12 @@ def createSignedCertHybrid(
     if valid_days <= 0:
         raise ValueError("La durée de validité doit être positive.")
 
-    from cryptography import x509
+    from .extensions import build_override_extensions
+    overrides = build_override_extensions(
+        key_usage=key_usage,
+        extended_key_usage=extended_key_usage,
+        extra_extensions=extra_extensions,
+    )
 
     ca_cert = x509.load_pem_x509_certificate(ca_cert_pem)
     issuer_name = ca_cert.subject.public_bytes()  # Name DER de l'émetteur
@@ -1065,15 +1113,19 @@ def createSignedCertHybrid(
     valid_from = datetime.datetime.now(datetime.timezone.utc)
     valid_to = valid_from + datetime.timedelta(days=valid_days)
 
-    subject_name = _name_der({
-        "country_code": country_code, "region": region, "city": city,
-        "company": company, "department": department,
-        "common_name": pseudo, "email": email,
-    })
+    if subject is not None:
+        subject_name = subject.public_bytes()  # DN repris tel quel (CSR)
+    else:
+        subject_name = _name_der({
+            "country_code": country_code, "region": region, "city": city,
+            "company": company, "department": department,
+            "common_name": pseudo, "email": email,
+        })
     extensions_der = _subject_extensions_der(
         subject_spki, ca_ski, is_ca=is_ca, path_length=path_length, email=email,
         alt_names=alt_names, ip_addresses=ip_addresses, ocsp_url=ocsp_url,
         ca_issuers_url=ca_issuers_url, crl_url=crl_url,
+        overrides=overrides,
     )
 
     sign_callable, sig_algid, _ca_label = _ca_signer_and_algid(

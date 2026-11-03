@@ -1,6 +1,6 @@
 # CheetahPKI
 
-**Version** : 0.0.20
+**Version** : 0.0.22
 **Auteur** : Michel KPEKPASSI | [GitHub](https://github.com/Michel14XW/cheetahpki)
 **Licence** : MIT | Python ≥ 3.11
 
@@ -8,6 +8,20 @@ CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des 
 
 Conçue pour être utilisée en backend Django (projet vXtend-PKI v3) mais utilisable dans tout projet Python.
 
+> **Nouveau en 0.0.22** — Profils de certificat réglables (interopérabilité **X-Road**) :
+> - **`key_usage`**, **`extended_key_usage`** et **`subject`** sur `createSignedCertFromBytes`,
+>   `createSignedCert` et `createSignedCertHybrid` (optionnels, rétrocompatibles).
+> - **`extra_extensions` remplace** désormais l'extension par défaut de même OID au lieu de lever
+>   « This extension has already been set » ; `x509.ExtendedKeyUsage([])` = pas d'EKU.
+> - **4 nouveaux profils** : `xroad_sign`, `xroad_auth`, `ocsp_signing`, `timestamping`
+>   + helper `certificate_profile_kwargs(profile)`.
+> - Reprise du **DN d'un CSR tel quel** (`subject=csr.subject` : `serialNumber`, `C` non standard…).
+>
+> Détails : voir [Changelog 0.0.22](#0022-2026-11-03).
+>
+> **Nouveau en 0.0.21** — `revokeCert()` : wrapper de révocation (charge la CRL courante,
+> ajoute l'entrée, re-signe).
+>
 > **Nouveau en 0.0.20** — Normalisation du sujet (DN) et du SubjectAltName,
 > alignée RFC 5280 :
 > - **E-mail optionnel** — un `email=""` est accepté (validé seulement s'il est fourni).
@@ -724,7 +738,7 @@ Les fonctions de signature `createSignedCertFromBytes` et
 avant la signature. Chaque élément est soit un `x509.ExtensionType`, soit
 un tuple `(extension, critical: bool)`.
 
-`DEFAULT_EXTENSIONS_BY_PROFILE` fournit 4 profils EKU prêts à l'emploi :
+`DEFAULT_EXTENSIONS_BY_PROFILE` fournit 8 profils prêts à l'emploi (4 EKU historiques ci-dessous + 4 profils 0.0.22, voir plus bas) :
 
 ```python
 from cheetahpki import (
@@ -746,12 +760,60 @@ cert_pem = createSignedCertFromBytes(
 )
 ```
 
-> ⚠️ **OID unique** : X.509 interdit deux extensions du même OID dans le
-> même certificat. La signature par défaut inclut déjà un `ExtendedKeyUsage`
-> (`serverAuth` + `clientAuth`) — ne pas ré-injecter d'EKU via
-> `extra_extensions` si vous comptez réutiliser cet emplacement. Utilisez
-> `extra_extensions` plutôt pour des extensions complémentaires :
-> `CertificatePolicies`, `NameConstraints`, `SubjectKeyIdentifier` custom, etc.
+> **OID unique / remplacement (0.0.22)** : X.509 interdit deux extensions du
+> même OID. Depuis 0.0.22, une extension de `extra_extensions` dont l'OID est
+> déjà posé par défaut (KeyUsage, EKU `serverAuth+clientAuth`, SAN, AIA…)
+> **remplace** l'extension par défaut. Convention : `x509.ExtendedKeyUsage([])`
+> retire l'EKU (aucune extension EKU encodée). Jusqu'à 0.0.21, cela levait
+> « This extension has already been set ».
+
+#### Profils 0.0.22 (X-Road, OCSP délégué, TSA)
+
+| Profil | KeyUsage (critique) | EKU | Extensions en plus |
+|--------|---------------------|-----|--------------------|
+| `xroad_sign` | nonRepudiation seul | aucun | |
+| `xroad_auth` | digitalSignature + keyEncipherment | clientAuth + serverAuth | |
+| `ocsp_signing` | digitalSignature | OCSPSigning | `id-pkix-ocsp-nocheck` |
+| `timestamping` | digitalSignature + nonRepudiation | timeStamping, **critique** | |
+
+Deux façons équivalentes de les appliquer :
+
+```python
+from cryptography import x509
+from cheetahpki import (
+    DEFAULT_EXTENSIONS_BY_PROFILE, certificate_profile_kwargs,
+    createSignedCertFromBytes,
+)
+
+csr = x509.load_pem_x509_csr(csr_pem)          # CSR d'un Security Server X-Road
+
+# 1) via extra_extensions (fusion par OID)
+cert_pem = createSignedCertFromBytes(
+    public_key_pem=pub_pem, pseudo="", company="", department="", city="",
+    region="", country_code="", email="", valid_days=730,
+    ca_private_key_pem=inter_priv_pem, ca_cert_pem=inter_cert_pem,
+    subject=csr.subject,                         # DN repris tel quel
+    extra_extensions=DEFAULT_EXTENSIONS_BY_PROFILE["xroad_sign"],
+)
+
+# 2) via les paramètres explicites
+cert_pem = createSignedCertFromBytes(
+    ..., subject=csr.subject, **certificate_profile_kwargs("xroad_auth"),
+)
+# certificate_profile_kwargs(...) -> {"key_usage": KeyUsage | None,
+#   "extended_key_usage": [OID] | [] | None, "extra_extensions": [...] | None}
+```
+
+Paramètres 0.0.22 (end-entity) :
+
+- `key_usage: x509.KeyUsage | None` — posé **critique** à la place du KeyUsage
+  déduit du type de clé.
+- `extended_key_usage: list[ObjectIdentifier] | None` — `[]` = pas d'EKU ;
+  `None` = `serverAuth + clientAuth` (0.0.21).
+- `subject: x509.Name | None` — DN utilisé tel quel (pas de `build_subject_name`,
+  pas de contrainte `C` = 2 lettres) ; `pseudo`/`company` deviennent facultatifs.
+
+Priorité : défauts < `extra_extensions` < `key_usage` / `extended_key_usage`.
 
 Pour ajouter votre propre profil :
 
@@ -796,6 +858,46 @@ cert_pem = createSignedCertFromBytes(..., extra_extensions=custom_profile)
 ---
 
 ## Changelog
+
+### 0.0.22 (2026-11-03)
+
+Profils de certificat réglables — préalable à l'interopérabilité **X-Road**
+(chantier 55 de vXtend-PKI-v2, `docs/interop-xroad.md`, Lot 1).
+
+- **Nouveaux paramètres optionnels** sur `createSignedCertFromBytes`,
+  `createSignedCert` et `createSignedCertHybrid` (défaut = comportement 0.0.21) :
+  - `key_usage: x509.KeyUsage | None` (posé critique) ;
+  - `extended_key_usage: list[ObjectIdentifier] | None` — une liste vide = **pas d'EKU** ;
+  - `subject: x509.Name | None` — DN repris tel quel (ex. `csr.subject`), sans
+    `build_subject_name` ni contrainte `C` = 2 lettres (`serialNumber`,
+    identifiant d'instance X-Road… conservés).
+  - `createSignedCertHybrid` accepte aussi `extra_extensions` (encodage DER via
+    `ExtensionType.public_bytes()`).
+- **`extra_extensions` : remplacement par OID** (y compris
+  `createSignedInterCertFromBytes`) — une extension dont l'OID existe dans les
+  défauts remplace celle-ci au lieu de lever « This extension has already been
+  set ». `x509.ExtendedKeyUsage([])` retire l'EKU.
+- **Nouveaux profils** dans `DEFAULT_EXTENSIONS_BY_PROFILE` : `xroad_sign`
+  (nonRepudiation seul, sans EKU), `xroad_auth` (digitalSignature +
+  keyEncipherment, clientAuth + serverAuth), `ocsp_signing` (digitalSignature,
+  OCSPSigning, `id-pkix-ocsp-nocheck`), `timestamping` (digitalSignature +
+  nonRepudiation, EKU timeStamping critique).
+- **Nouveaux exports** : `certificate_profile_kwargs`, `merge_extensions`,
+  `SUPPORTED_CERTIFICATE_PROFILES`.
+- **Tests** : `tests/test_profiles_0022.py` (27 tests : KU/EKU par profil sur les
+  chemins `cryptography` et DER hybride, rétrocompatibilité, reprise d'un DN avec
+  `serialNumber` et `C` non standard). Lancer : `python -m pytest tests/`.
+- Réintègre dans le dépôt `revokeCert` (0.0.21, publié jusqu'ici uniquement via
+  l'archive vendorisée de vXtend).
+
+> Rétro-compatible 0.0.21 : un appel sans les nouveaux paramètres produit le
+> même certificat. Seul changement observable : un `extra_extensions` portant un
+> OID déjà posé, qui levait une erreur, est désormais accepté (remplacement).
+
+### 0.0.21 (2026-06)
+
+- **`revokeCert(...)`** : wrapper de révocation — charge la CRL courante, ajoute
+  l'entrée (numéro de série, date, motif) et re-signe la CRL.
 
 ### 0.0.20 (2026-06-01)
 

@@ -16,6 +16,7 @@ from .exceptions import (
     CertificateSaveError,
 )
 from ._name import is_valid_email, build_subject_name, build_san_general_names
+from .extensions import merge_extensions
 
 
 _HASH_ALIASES = {
@@ -76,7 +77,8 @@ def createSignedInterCertFromBytes(
         avant la signature, fournies par un `CertificateTemplate` côté Django.
         Chaque élément est soit un objet `x509.ExtensionType`, soit un tuple
         `(extension, critical: bool)`. Les extensions sont ajoutées après les
-        extensions par défaut, dans l'ordre fourni.
+        extensions par défaut, dans l'ordre fourni ; depuis 0.0.22, une
+        extension dont l'OID est déjà posé par défaut le **remplace**.
     """
     if not pseudo or not company:
         raise ValueError("Les champs 'pseudo' et 'company' sont obligatoires.")
@@ -164,17 +166,12 @@ def createSignedInterCertFromBytes(
         .not_valid_before(valid_from)
         .not_valid_after(valid_to)
     )
-    for ext in extensions:
-        builder = builder.add_extension(ext, critical=False)
-
-    # Extensions issues d'un CertificateTemplate (Django) — cheetahpki >= 0.0.16
-    if extra_extensions:
-        for item in extra_extensions:
-            if isinstance(item, tuple):
-                ext_obj, critical = item
-            else:
-                ext_obj, critical = item, False
-            builder = builder.add_extension(ext_obj, critical=critical)
+    # Extensions issues d'un CertificateTemplate (Django) — cheetahpki >= 0.0.16.
+    # Depuis 0.0.22 : fusion par OID (une surcharge remplace l'extension par
+    # défaut de même OID au lieu de lever « already set »).
+    defaults = [(ext, False) for ext in extensions]
+    for ext, critical in merge_extensions(defaults, extra_extensions):
+        builder = builder.add_extension(ext, critical=critical)
 
     certificate = builder.sign(
         private_key=ca_private_key,
