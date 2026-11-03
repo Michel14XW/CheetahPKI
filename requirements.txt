@@ -1,0 +1,2 @@
+# Dépendances d'exécution de cheetahpki (miroir de install_requires, setup.py).
+cryptography>=50.0.0

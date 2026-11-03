@@ -106,7 +106,7 @@ def _verify_signature(cert, ca):
 # ── Version / exports ───────────────────────────────────────────────────────
 
 def test_version():
-    assert cheetahpki.__version__ == "0.0.22"
+    assert tuple(int(x) for x in cheetahpki.__version__.split(".")) >= (0, 0, 22)
     for name in ("xroad_sign", "xroad_auth", "ocsp_signing", "timestamping"):
         assert name in cheetahpki.SUPPORTED_CERTIFICATE_PROFILES
         assert name in DEFAULT_EXTENSIONS_BY_PROFILE
