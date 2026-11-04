@@ -114,26 +114,30 @@ def createSignedInterCertFromBytes(
     valid_from = datetime.datetime.now(datetime.UTC)
     valid_to = valid_from + datetime.timedelta(days=valid_days)
 
+    # 0.0.24 (RFC 5280) : BasicConstraints et KeyUsage CRITIQUES (§4.2.1.9 :
+    # « MUST » pour une CA ; §4.2.1.3 : « SHOULD ») et PAS d'ExtendedKeyUsage.
+    # Jusqu'à 0.0.23, la CA intermédiaire portait serverAuth + clientAuth : les
+    # vérificateurs qui imposent l'imbrication des EKU (CryptoAPI, Go, NSS…)
+    # rejetaient alors tout certificat émis en dessous pour un autre usage
+    # (signature X-Road sans EKU, répondeur OCSPSigning, TSA timeStamping).
+    # Pour restreindre la CA à certains usages, passer un
+    # `x509.ExtendedKeyUsage([...])` dans `extra_extensions`.
     extensions = [
-        x509.BasicConstraints(ca=True, path_length=0),
-        x509.KeyUsage(
+        (x509.BasicConstraints(ca=True, path_length=0), True),
+        (x509.KeyUsage(
             digital_signature=True, key_cert_sign=True, crl_sign=True,
             key_encipherment=False, data_encipherment=False,
             content_commitment=False, key_agreement=False,
             encipher_only=False, decipher_only=False,
-        ),
-        x509.ExtendedKeyUsage([
-            x509.oid.ExtendedKeyUsageOID.SERVER_AUTH,
-            x509.oid.ExtendedKeyUsageOID.CLIENT_AUTH,
-        ]),
-        x509.SubjectKeyIdentifier.from_public_key(public_key),
-        x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_private_key.public_key()),
+        ), True),
+        (x509.SubjectKeyIdentifier.from_public_key(public_key), False),
+        (x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_private_key.public_key()), False),
     ]
 
     # SAN — posé uniquement s'il contient au moins un GeneralName.
     san_names = build_san_general_names(email, alt_names, ip_addresses)
     if san_names:
-        extensions.append(x509.SubjectAlternativeName(san_names))
+        extensions.append((x509.SubjectAlternativeName(san_names), False))
 
     aia_descriptions = []
     if ocsp_url:
@@ -147,15 +151,15 @@ def createSignedInterCertFromBytes(
             x509.UniformResourceIdentifier(ca_issuers_url),
         ))
     if aia_descriptions:
-        extensions.append(x509.AuthorityInformationAccess(aia_descriptions))
+        extensions.append((x509.AuthorityInformationAccess(aia_descriptions), False))
 
     if crl_url:
-        extensions.append(x509.CRLDistributionPoints([
+        extensions.append((x509.CRLDistributionPoints([
             x509.DistributionPoint(
                 full_name=[x509.UniformResourceIdentifier(crl_url)],
                 relative_name=None, reasons=None, crl_issuer=None,
             )
-        ]))
+        ]), False))
 
     builder = (
         x509.CertificateBuilder()
@@ -169,8 +173,7 @@ def createSignedInterCertFromBytes(
     # Extensions issues d'un CertificateTemplate (Django) — cheetahpki >= 0.0.16.
     # Depuis 0.0.22 : fusion par OID (une surcharge remplace l'extension par
     # défaut de même OID au lieu de lever « already set »).
-    defaults = [(ext, False) for ext in extensions]
-    for ext, critical in merge_extensions(defaults, extra_extensions):
+    for ext, critical in merge_extensions(extensions, extra_extensions):
         builder = builder.add_extension(ext, critical=critical)
 
     certificate = builder.sign(
