@@ -80,7 +80,7 @@ from .pqc import (
     load_pqc_private_key_pem,
 )
 
-__version__ = "0.0.23"
+__version__ = "0.0.24"
 VERSION = __version__.split(".")
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # CheetahPKI
 
-**Version** : 0.0.23
+**Version** : 0.0.24
 **Auteur** : Michel KPEKPASSI | [GitHub](https://github.com/Michel14XW/cheetahpki)
 **Licence** : MIT | Python ≥ 3.11
 
@@ -8,6 +8,11 @@ CheetahPKI est une bibliothèque Python de cryptographie PKI pour générer des 
 
 Conçue pour être utilisée en backend Django (projet vXtend-PKI v3) mais utilisable dans tout projet Python.
 
+> **Nouveau en 0.0.24** — Certificat de **CA intermédiaire conforme RFC 5280** :
+> BasicConstraints et KeyUsage **critiques**, **plus d'ExtendedKeyUsage** par défaut
+> (il restreignait à serverAuth/clientAuth tous les certificats émis en dessous).
+> Détails : voir [Changelog 0.0.24](#0024-2026-11-04).
+>
 > **Nouveau en 0.0.23** — Dépendances assainies : `djangorestframework` (inutilisé) retiré,
 > plancher de sécurité `cryptography>=50.0.0`, extras `[pqc]` (liboqs-python) et `[test]`,
 > fichiers `requirements.txt` / `requirements-dev.txt`. Aucun changement d'API.
@@ -141,9 +146,9 @@ from cheetahpki import SUPPORTED_PQC_ALGORITHMS, PQC_ALGORITHMS, PQC_BACKEND
 pip install git+https://github.com/Michel14XW/cheetahpki.git
 
 # Depuis une archive locale
-pip install dist/cheetahpki-0.0.23.tar.gz
+pip install dist/cheetahpki-0.0.24.tar.gz
 # ou en wheel
-pip install dist/cheetahpki-0.0.23-py3-none-any.whl
+pip install dist/cheetahpki-0.0.24-py3-none-any.whl
 
 # Avec le backend post-quantique de production (liboqs-python ; la bibliothèque
 # C liboqs doit être installée, cf. OQS_INSTALL_PATH)
@@ -876,6 +881,24 @@ cert_pem = createSignedCertFromBytes(..., extra_extensions=custom_profile)
 ---
 
 ## Changelog
+
+### 0.0.24 (2026-11-04)
+
+Certificat de CA intermédiaire (`createSignedInterCertFromBytes` / `createSignedInterCert`)
+aligné sur RFC 5280. **Changement de comportement** pour les nouvelles CA intermédiaires
+(les certificats déjà émis ne changent pas) ; signature des fonctions inchangée.
+
+- **BasicConstraints critique** (§4.2.1.9 : « MUST » pour un certificat de CA) et
+  **KeyUsage critique** (§4.2.1.3 : « SHOULD »). Ils étaient non critiques : le
+  vérificateur strict de `cryptography` refusait la chaîne.
+- **Plus d'ExtendedKeyUsage** sur la CA intermédiaire. Elle portait `serverAuth` +
+  `clientAuth`, ce qui, chez les vérificateurs qui imbriquent les EKU (CryptoAPI, Go,
+  NSS…), rendait invalides les certificats émis en dessous pour un autre usage :
+  signature X-Road (sans EKU), répondeur OCSP (`OCSPSigning`), TSA (`timeStamping`).
+  Pour restreindre volontairement une CA, passer `x509.ExtendedKeyUsage([...])` dans
+  `extra_extensions`.
+- Tests : `tests/test_ca_extensions_0024.py` (8 tests, dont la validation d'une chaîne
+  racine → intermédiaire → certificat `xroad_auth` par `cryptography.x509.verification`).
 
 ### 0.0.23 (2026-11-03)
 
